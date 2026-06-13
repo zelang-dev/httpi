@@ -81,8 +81,14 @@ target_include_directories(${SUB_PROJECT}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-
-
+find_package(events QUIET)
+if(NOT events_FOUND)
+    FetchContent_Declare(events
+        URL https://github.com/zelang-dev/c-events/archive/refs/tags/0.8.0.zip
+        URL_MD5 7dba0729f74fbb1711a2aca4e32ba1ba
+    )
+    FetchContent_MakeAvailable(events)
+endif()
 target_include_directories(${SUB_PROJECT}
 	PRIVATE $<BUILD_INTERFACE:${EVENTS_INCLUDE_DIR} $<INSTALL_INTERFACE:${EVENTS_INCLUDE_DIR})
 target_link_libraries(${SUB_PROJECT} PUBLIC EVENTS::LOOP)
