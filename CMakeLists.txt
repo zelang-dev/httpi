@@ -136,8 +136,8 @@ if(NOT quickjs_FOUND)
     endif()
 	set(ENV{QJS_BUILD_LIBC} "ON")
     FetchContent_Declare(quickjs
-        URL https://github.com/quickjs-ng/quickjs/archive/refs/tags/v0.15.0.zip
-        URL_MD5 aa1dd87703c7199a6267352107b842ee
+        URL https://github.com/quickjs-ng/quickjs/archive/refs/tags/v0.15.1.zip
+        URL_MD5 62fbeff00bb3f31b55a5b50e6b58f28c
     )
     FetchContent_MakeAvailable(quickjs)
 endif()
