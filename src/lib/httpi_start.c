@@ -282,13 +282,14 @@ void http_close_listening_sockets(http_ini_t *ctx) {
 }
 
 void http_free_ini(http_ini_t *ctx) {
-	struct http_cb_info *tmp_rh;
-
 	if (!is_type(ctx, (data_types)DATA_HTTP_SERVER))
 		return;
 
-	http_close_listening_sockets(ctx);
 	atomic_flag_clear(&ctx->nonce_mutex);
+	http_close_listening_sockets(ctx);
+	if (!is_empty(ctx->handlers))
+		hash_free(ctx->handlers);
+
 	free(ctx);
 }
 
@@ -518,17 +519,11 @@ http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
 		return nullptr;
 	}
 
-	//ctx->options = array();
-	//if (is_empty(ctx->options)) {
-	////	$delete(ctx->server_sockets);
-	//	free(ctx);
-	//	return nullptr;
-	//}
-
 	if (http_ini_options(ctx, (string_t *)options))
 		return nullptr;
 
-	if (events_init((max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd)))
+	ctx->max_fd = max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd;
+	if (events_init(ctx->max_fd))
 		return http_abort_start(ctx, "Error setting `events_init()`");
 
 	/* Random number generator will initialize at the first call */
@@ -536,6 +531,7 @@ http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
 		return http_abort_start(ctx, "Cannot initialize random number generator");
 
 	ctx->host.auth_nonce_mask = nonce ^ (uint64_t)(ptrdiff_t)(options);
+	ctx->handlers = null;
 	ctx->host.handlers = null;
 	ctx->host.next = null;
 	atomic_flag_clear(&ctx->nonce_mutex);

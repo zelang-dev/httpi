@@ -257,34 +257,6 @@ struct ws_subprotocols_s {
 	string_t *subprotocols;
 };
 
-struct http_cb_info {
-	/* handler type */
-	int handler_type;
-	size_t uri_len;
-	/* Name/Pattern of the URI. */
-	char *uri;
-	/* User supplied argument for the handler function. */
-	void_t cbdata;
-
-	/* Handler for http/https or authorization requests. */
-	route_cb handler;
-
-	/* Handler for ws/wss (websocket) requests. */
-	ws_connect_cb connect_handler;
-	ws_ready_cb ready_handler;
-	ws_data_cb data_handler;
-	ws_close_cb close_handler;
-
-	/* Handler for authorization requests */
-	auth_cb auth_handler;
-
-	/* accepted subprotocols for ws/wss requests. */
-	struct ws_subprotocols_s *subprotocols;
-
-	/* next handler in a linked list */
-	struct http_cb_info *next;
-};
-
 /* Record of a port a server/client is listening on
  * Describes listening socket, or socket which was accept()-ed by the `main`
  * thread and queued for future handling by the worker `task` thread `pool`. */
@@ -432,8 +404,8 @@ struct ini_domain_s {
 	tls_s *tls_ctx;
 	/* Linked list of domains */
 	struct ini_domain_s *next;
-	 /* linked list of uri handlers */
-	struct http_cb_info *handlers;
+	 /* hashtable of uri handlers */
+	hash_t *handlers;
 	/* `HttPi` configuration parameters */
 	char *config[NUM_OPTIONS];
 	/* Protects nonce_count */
@@ -455,6 +427,7 @@ struct http_ini_s {
 	enum http_type_t http_type;
 	enum http_dbg debug_level;
 	int enable_keep_alive;
+	int max_fd;
 	/* Memory related */
 	/* The max request size */
 	unsigned int max_request_size;
@@ -474,8 +447,8 @@ struct http_ini_s {
 	//array_t options;
 	/* Array of `http_socket` listening sockets */
 	array_t server_sockets;
-	/* linked list of uri handlers */
-	struct http_cb_info *handlers;
+	 /* hashtable of uri handlers */
+	hash_t *handlers;
 	/* Part 2 - Logical domain:
 	 * This holds hostname, TLS certificate, document root, ...
 	 * set for a domain hosted at the server.
@@ -882,8 +855,8 @@ string_t http_get_rel_url_at_current_server(string_t uri, http_t *conn);
  * included in all responses other than 100, 101, 5xx. */
 void http_gmt_time_str(char *buf, size_t buf_len, time_t *t);
 
-/* Sets callback handlers to uri's. */
-void http_set_handler(http_ini_t *ctx,
+/* Setup hashtable to hold callback handlers to uri's. */
+void http_set_handler2(http_ini_t *ctx,
 	string_t uri, enum route_type_t handler_type,
 	bool is_delete_request, route_cb handler,
 	struct ws_subprotocols_s *subprotocols,

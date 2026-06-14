@@ -492,7 +492,7 @@ interpret_cleanup:
 	*is_put_or_delete_request = 0;
 }
 
-static int http_get_request_handler(http_t *conn,
+static int http_get_request_handler2(http_t *conn,
 	int handler_type,
 	route_cb *handler,
 	struct ws_subprotocols_s **subprotocols,
@@ -501,94 +501,84 @@ static int http_get_request_handler(http_t *conn,
 	ws_data_cb *data_handler,
 	ws_close_cb *close_handler,
 	auth_cb *auth_handler,
-	void **cbdata,
-	struct http_cb_info **handler_info) {
+	void **cbdata) {
+	if (!conn || !conn->ctx) {
+		return 0;
+	}
+
 	const httpi_t *request_info = &conn->req;
 	if (request_info) {
 		string_t uri = request_info->local_uri;
 		size_t urilen = strlen(uri);
-		struct http_cb_info *tmp_rh;
 
-		if (!conn || !conn->ctx) {
-			return 0;
-		}
-
-		atomic_lock(&conn->ctx->nonce_mutex);
+		//atomic_lock(&conn->ctx->nonce_mutex);
 
 		/* first try for an exact match */
-		for (tmp_rh = conn->ctx->handlers; tmp_rh != NULL;
-			tmp_rh = tmp_rh->next) {
-			if (tmp_rh->handler_type == handler_type) {
-				if (urilen == tmp_rh->uri_len && !strcmp(tmp_rh->uri, uri)) {
-					if (handler_type == WEBSOCKET_HANDLER) {
-						*subprotocols = tmp_rh->subprotocols;
-						*connect_handler = tmp_rh->connect_handler;
-						*ready_handler = tmp_rh->ready_handler;
-						*data_handler = tmp_rh->data_handler;
-						*close_handler = tmp_rh->close_handler;
-					} else if (handler_type == REQUEST_HANDLER) {
-						*handler = tmp_rh->handler;
-						*handler_info = tmp_rh;
-					} else { /* AUTH_HANDLER */
-						*auth_handler = tmp_rh->auth_handler;
+		tuple_t uri_route = (tuple_t)hash_get_value(conn->ctx->handlers, uri)->object;
+		if (is_data(uri_route)) {
+			if (handler_type == WEBSOCKET_HANDLER) {
+				*connect_handler = (ws_connect_cb)uri_route[0].func;
+				*ready_handler = (ws_ready_cb)uri_route[1].func;
+				*data_handler = (ws_data_cb)uri_route[2].func;
+				*close_handler = (ws_close_cb)uri_route[3].func;
+				*subprotocols = (struct ws_subprotocols_s *)uri_route[4].object;
+				*cbdata = uri_route[5].object;
+			} else {
+				if (handler_type == REQUEST_HANDLER) {
+					*handler = (route_cb)uri_route[0].func;
+				} else {
+					/* AUTH_HANDLER */
+					*auth_handler = (auth_cb)uri_route[0].func;
+				}
+				*cbdata = uri_route[1].object;
+			}
+			//atomic_unlock(&conn->ctx->nonce_mutex);
+			return 1;
+		}
+
+		/* next try for a partial match */
+		int i, counter = 0, count = (int)hash_count(conn->ctx->handlers),
+			cap = (int)hash_capacity(conn->ctx->handlers);
+		hash_pair_t *pair;
+		if (cap > 0 && count > 0) {
+			for (i = 0; i < cap; i++) {
+				pair = hash_buckets(conn->ctx->handlers, i);
+				if (!hash_pair_is_null(pair)) {
+					string_t key = hash_pair_key(pair);
+					size_t key_len = strlen(key);
+					tuple_t uri_route = (tuple_t)hash_pair_value(pair).object;
+
+					/* we will accept uri/something */
+					if ((key_len < urilen && uri[key_len] == '/' && memcmp(key, uri, key_len) == 0)
+						/* finally try for pattern match */
+						|| (http_match_prefix(key, key_len, uri) > 0)) {
+						if (handler_type == WEBSOCKET_HANDLER) {
+							*connect_handler = (ws_connect_cb)uri_route[0].func;
+							*ready_handler = (ws_ready_cb)uri_route[1].func;
+							*data_handler = (ws_data_cb)uri_route[2].func;
+							*close_handler = (ws_close_cb)uri_route[3].func;
+							*subprotocols = (struct ws_subprotocols_s *)uri_route[4].object;
+							*cbdata = uri_route[5].object;
+						} else {
+							if (handler_type == REQUEST_HANDLER) {
+								*handler = (route_cb)uri_route[0].func;
+							} else {
+								/* AUTH_HANDLER */
+								*auth_handler = (auth_cb)uri_route[0].func;
+							}
+							*cbdata = uri_route[1].object;
+						}
+						//atomic_unlock(&conn->ctx->nonce_mutex);
+						return 1;
 					}
-					*cbdata = tmp_rh->cbdata;
-					atomic_unlock(&conn->ctx->nonce_mutex);
-					return 1;
+
+					/* skip remaining buckets, actual handlers added reached */
+					if (++counter == count)
+						break;
 				}
 			}
 		}
-
-		/* next try for a partial match, we will accept uri/something */
-		for (tmp_rh = conn->ctx->handlers; tmp_rh != NULL;
-			tmp_rh = tmp_rh->next) {
-			if (tmp_rh->handler_type == handler_type) {
-				if (tmp_rh->uri_len < urilen && uri[tmp_rh->uri_len] == '/'
-					&& memcmp(tmp_rh->uri, uri, tmp_rh->uri_len) == 0) {
-					if (handler_type == WEBSOCKET_HANDLER) {
-						*subprotocols = tmp_rh->subprotocols;
-						*connect_handler = tmp_rh->connect_handler;
-						*ready_handler = tmp_rh->ready_handler;
-						*data_handler = tmp_rh->data_handler;
-						*close_handler = tmp_rh->close_handler;
-					} else if (handler_type == REQUEST_HANDLER) {
-						*handler = tmp_rh->handler;
-						*handler_info = tmp_rh;
-					} else { /* AUTH_HANDLER */
-						*auth_handler = tmp_rh->auth_handler;
-					}
-					*cbdata = tmp_rh->cbdata;
-					atomic_unlock(&conn->ctx->nonce_mutex);
-					return 1;
-				}
-			}
-		}
-
-		/* finally try for pattern match */
-		for (tmp_rh = conn->ctx->handlers; tmp_rh != NULL;
-			tmp_rh = tmp_rh->next) {
-			if (tmp_rh->handler_type == handler_type) {
-				if (http_match_prefix(tmp_rh->uri, tmp_rh->uri_len, uri) > 0) {
-					if (handler_type == WEBSOCKET_HANDLER) {
-						*subprotocols = tmp_rh->subprotocols;
-						*connect_handler = tmp_rh->connect_handler;
-						*ready_handler = tmp_rh->ready_handler;
-						*data_handler = tmp_rh->data_handler;
-						*close_handler = tmp_rh->close_handler;
-					} else if (handler_type == REQUEST_HANDLER) {
-						*handler = tmp_rh->handler;
-						*handler_info = tmp_rh;
-					} else { /* AUTH_HANDLER */
-						*auth_handler = tmp_rh->auth_handler;
-					}
-					*cbdata = tmp_rh->cbdata;
-					atomic_unlock(&conn->ctx->nonce_mutex);
-					return 1;
-				}
-			}
-		}
-
-		atomic_unlock(&conn->ctx->nonce_mutex);
+		//atomic_unlock(&conn->ctx->nonce_mutex);
 	}
 	return 0; /* none found */
 }
@@ -2443,7 +2433,6 @@ void http_handle_request(http_t *conn) {
 	int i;
 	struct file file = STRUCT_FILE_INITIALIZER;
 	route_cb callback_handler = NULL;
-	struct http_cb_info *handler_info = NULL;
 	struct ws_subprotocols_s *subprotocols;
 	ws_connect_cb ws_connect_handler = NULL;
 	ws_ready_cb ws_ready_handler = NULL;
@@ -2652,7 +2641,7 @@ void http_handle_request(http_t *conn) {
 	}
 
 	/* 5.2. check if the request will be handled by a callback */
-	if (http_get_request_handler(conn,
+	if (http_get_request_handler2(conn,
 		handler_type,
 		&callback_handler,
 		&subprotocols,
@@ -2661,8 +2650,7 @@ void http_handle_request(http_t *conn) {
 		&ws_data_handler,
 		&ws_close_handler,
 		NULL,
-		&callback_data,
-		&handler_info)) {
+		&callback_data)) {
 	  /* 5.2.1. A callback will handle this request. All requests
 		* handled by a callback have to be considered as requests
 		* to a script resource. */
@@ -2706,7 +2694,7 @@ no_callback_resource:
 
 	/* 6. authorization check */
 	/* 6.1. a custom authorization handler is installed */
-	if (http_get_request_handler(conn,
+	if (http_get_request_handler2(conn,
 		AUTH_HANDLER,
 		NULL,
 		NULL,
@@ -2715,8 +2703,7 @@ no_callback_resource:
 		NULL,
 		NULL,
 		&auth_handler,
-		&auth_callback_data,
-		NULL)) {
+		&auth_callback_data)) {
 		if (!auth_handler(conn, auth_callback_data)) {
 			debug_info("%s", "auth handler rejected request"CLR_LN);
 			return;
@@ -2733,7 +2720,6 @@ no_callback_resource:
 		if (conn->domain->config[DOCUMENT_ROOT] == NULL
 			|| conn->domain->config[PUT_DELETE_PASSWORDS_FILE] == NULL) {
 			/* This code path will not be called for request handlers */
-			//DEBUG_ASSERT(handler_info == NULL);
 
 			/* This server does not have any real files, thus the
 			 * PUT/DELETE methods are not valid. */

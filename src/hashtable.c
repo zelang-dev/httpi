@@ -53,8 +53,8 @@ static u32 hash_initial_capacity = HASH_INIT_CAPACITY;
 static bool hash_initial_override = false;
 static FORCEINLINE void plain_free(void_t data) {}
 
-key_ops_t key_ops_string = {djb2_hash, hash_string_eq, hash_string_cp, free, nullptr};
-val_ops_t val_ops_string = {hash_string_eq, hash_string_cp, free, nullptr};
+key_ops_t key_ops_string = {djb2_hash, hash_string_eq, hash_string_cp, (func_t)str_free, nullptr};
+val_ops_t val_ops_string = {hash_string_eq, hash_string_cp, (func_t)str_free, nullptr};
 key_ops_t key_ops_auto = {djb2_hash, hash_string_eq, hash_str_autofree, plain_free, nullptr};
 val_ops_t val_ops_auto = {hash_string_eq, hash_str_autofree, plain_free, nullptr};
 
@@ -159,14 +159,14 @@ void hash_free(hash_t *htable) {
 			if (buckets[i] && buckets[i]->key) {
 				if (htable->is_hashmap) {
 					if (buckets[i]->type == DATA_PTR)
-						htable->key_ops._free(buckets[i]->key);
+						htable->key_ops.__free(buckets[i]->key);
 				} else {
 					if (buckets[i]->type == DATA_PTR || buckets[i]->type == DATA_OBJ)
-						htable->key_ops._free(buckets[i]->key);
+						htable->key_ops.__free(buckets[i]->key);
 				}
 
 				if (!is_empty(buckets[i]->value))
-					htable->val_ops._free(buckets[i]->value);
+					htable->val_ops.__free(buckets[i]->value);
 			}
 
 			pair_free(buckets[i]);
@@ -203,8 +203,8 @@ static FORCEINLINE void hash_grow(hash_t *htable) {
         crt_pair = old_buckets[i];
         if (!is_empty(crt_pair) && !hash_is_tombstone(htable, i)) {
             hash_operation(htable, crt_pair->key, crt_pair->value, crt_pair->type);
-            htable->val_ops._free(crt_pair->value);
-            htable->key_ops._free(crt_pair->key);
+            htable->val_ops.__free(crt_pair->value);
+            htable->key_ops.__free(crt_pair->key);
             pair_free(crt_pair);
         }
     }
@@ -246,7 +246,7 @@ hash_pair_t *hash_operation(hash_t *hash, const_t key, const_t value, data_types
 			// Update the existing value
 			// Free the old values
             if (buckets[idx]->type != DATA_PTR)
-				hash->key_ops._free(buckets[idx]->value);
+				hash->key_ops.__free(buckets[idx]->value);
 
 			free(buckets[idx]->extended);
 
@@ -366,7 +366,10 @@ template_t *hash_get_value(hash_t *htable, const_t key) {
 }
 
 void_t hash_get(hash_t *htable, const_t key) {
-    uint32_t hash_val = htable->key_ops.hash(key);
+	if (!is_type(htable, DATA_HASHTABLE))
+		return nullptr;
+
+	uint32_t hash_val = htable->key_ops.hash(key);
     size_t idx = hash_val % (u32)atomic_load(&htable->capacity);
 
     if (is_empty(atomic_load(&htable->buckets[idx])))
@@ -438,9 +441,9 @@ void hash_delete(hash_t *htable, const_t key) {
     hash_pair_t **buckets = (hash_pair_t **)atomic_load_explicit(&htable->buckets, memory_order_acquire);
     atomic_thread_fence(memory_order_seq_cst);
     free(buckets[idx]->extended);
-    htable->key_ops._free(buckets[idx]->key);
+    htable->key_ops.__free(buckets[idx]->key);
     if (buckets[idx]->type == DATA_PTR)
-        htable->key_ops._free(buckets[idx]->value);
+        htable->key_ops.__free(buckets[idx]->value);
 
 	atomic_store_explicit(&htable->buckets, (atomic_hash_pair_t **)buckets, memory_order_release);
     atomic_fetch_sub(&htable->size, 1);
@@ -574,6 +577,7 @@ static FORCEINLINE bool plain_eq(const_t data1, const_t data2, void_t arg) {
 }
 
 val_ops_t val_ops_value = {plain_eq, plain_cp, plain_free, nullptr};
+val_ops_t val_ops_array = {plain_eq, plain_cp, data_delete, nullptr};
 
 FORCEINLINE hash_t *hash_create(void) {
     return (hash_t *)hashtable_init(key_ops_string, val_ops_value, hash_lp_idx, 0);
@@ -581,6 +585,10 @@ FORCEINLINE hash_t *hash_create(void) {
 
 FORCEINLINE hash_t *hash_create_ex(u32 size) {
     return (hash_t *)hashtable_init(key_ops_string, val_ops_value, hash_lp_idx, size);
+}
+
+FORCEINLINE hash_t *hash_create_array(u32 size) {
+	return (hash_t *)hashtable_init(key_ops_string, val_ops_array, hash_lp_idx, size);
 }
 
 FORCEINLINE hash_t *hash_create_auto(u32 size) {
