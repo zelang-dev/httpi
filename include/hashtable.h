@@ -13,14 +13,14 @@ typedef struct key_ops_s {
     uint32_t(*hash)(const_t data);
     bool (*eq)(const_t data1, const_t data2, void_t arg);
     void_t(*cp)(const_t data, void_t arg);
-    void (*__free)(void_t data);
+    void (*_free)(void_t data);
     void_t arg;
 } key_ops_t;
 
 typedef struct val_ops_s {
     bool (*eq)(const_t data1, const_t data2, void_t arg);
     void_t(*cp)(const_t data, void_t arg);
-    void (*__free)(void_t data);
+    void (*_free)(void_t data);
     void_t arg;
 } val_ops_t;
 
@@ -48,7 +48,6 @@ C_API hash_t *hashtable_init(key_ops_t key_ops, val_ops_t val_ops, probe_func pr
 C_API hash_t *hash_create(void);
 C_API hash_t *hash_create_ex(u32);
 C_API hash_t *hash_create_auto(u32);
-C_API hash_t *hash_create_array(u32);
 
 C_API void_t hash_put(hash_t *, const_t key, const_t value);
 C_API void_t hash_put_str(hash_t *htable, const_t key, string value);

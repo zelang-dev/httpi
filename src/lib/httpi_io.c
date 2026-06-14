@@ -2556,77 +2556,130 @@ int http_upload(http_t *conn, string_t destination_dir) {
 	return num_uploaded_files;
 }
 
-void http_set_handler2(http_ini_t *ctx,
+void http_set_handler(http_ini_t *ctx,
 	string_t uri, enum route_type_t handler_type,
 	bool is_delete_request, route_cb handler,
 	struct ws_subprotocols_s *subprotocols,
 	ws_connect_cb connect_handler, ws_ready_cb ready_handler,
 	ws_data_cb data_handler, ws_close_cb close_handler,
 	auth_cb auth_handler, void_t cbdata) {
+	struct http_cb_info *tmp_rh, **lastref;
+	size_t urilen = strlen(uri);
 
 	if (handler_type == WEBSOCKET_HANDLER) {
-		if (handler != NULL) return;
-		if (!is_delete_request && connect_handler == NULL && ready_handler == NULL
-			&& data_handler == NULL	&& close_handler == NULL) return;
-		if (auth_handler != NULL) return;
+		if (handler != NULL) {
+			return;
+		}
+		if (!is_delete_request && connect_handler == NULL
+		    && ready_handler == NULL
+		    && data_handler == NULL
+		    && close_handler == NULL) {
+			return;
+		}
+		if (auth_handler != NULL) {
+			return;
+		}
 	} else if (handler_type == REQUEST_HANDLER) {
-		if (connect_handler != NULL || ready_handler != NULL || data_handler != NULL
-			|| close_handler != NULL)return;
-		if (!is_delete_request && (handler == NULL)) return;
-		if (auth_handler != NULL) return;
+		if (connect_handler != NULL || ready_handler != NULL
+		    || data_handler != NULL
+		    || close_handler != NULL) {
+			return;
+		}
+		if (!is_delete_request && (handler == NULL)) {
+			return;
+		}
+		if (auth_handler != NULL) {
+			return;
+		}
 	} else {
-		if (handler != NULL) return;
-		if (connect_handler != NULL || ready_handler != NULL || data_handler != NULL
-			|| close_handler != NULL) return;
-		if (!is_delete_request && (auth_handler == NULL)) return;
+		if (handler != NULL) {
+			return;
+		}
+		if (connect_handler != NULL || ready_handler != NULL
+		    || data_handler != NULL
+		    || close_handler != NULL) {
+			return;
+		}
+		if (!is_delete_request && (auth_handler == NULL)) {
+			return;
+		}
 	}
 
-	if (!is_type(ctx, (data_types)DATA_HTTP_SERVER))
+	if (!ctx) {
 		return;
+	}
 
-	if (is_empty(ctx->handlers))
-		ctx->handlers = hash_create_array(ctx->max_fd);
+	atomic_lock(&ctx->nonce_mutex);
 
 	/* first try to find an existing handler */
-	tuple_t uri_route = (tuple_t)hash_get_value(ctx->handlers, uri)->object;
-	if (is_data(uri_route)) {
-		atomic_lock(&ctx->nonce_mutex);
-		if (handler_type == WEBSOCKET_HANDLER) {
-			uri_route[0].func = (data_func_t)connect_handler;
-			uri_route[1].func = (data_func_t)ready_handler;
-			uri_route[2].func = (data_func_t)data_handler;
-			uri_route[3].func = (data_func_t)close_handler;
-			uri_route[4].object = subprotocols;
-			uri_route[5].object = cbdata;
-		} else {
-			uri_route[0].func = (handler_type == REQUEST_HANDLER)
-				? (data_func_t)handler
-				: /* AUTH_HANDLER */ (data_func_t)auth_handler;
-			uri_route[1].object = cbdata;
+	lastref = &(ctx->handlers);
+	for (tmp_rh = ctx->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
+		if (tmp_rh->handler_type == handler_type) {
+			if (urilen == tmp_rh->uri_len && !strcmp(tmp_rh->uri, uri)) {
+				if (!is_delete_request) {
+					/* update existing handler */
+					if (handler_type == REQUEST_HANDLER) {
+						tmp_rh->handler = handler;
+					} else if (handler_type == WEBSOCKET_HANDLER) {
+						tmp_rh->subprotocols = subprotocols;
+						tmp_rh->connect_handler = connect_handler;
+						tmp_rh->ready_handler = ready_handler;
+						tmp_rh->data_handler = data_handler;
+						tmp_rh->close_handler = close_handler;
+					} else { /* AUTH_HANDLER */
+						tmp_rh->auth_handler = auth_handler;
+					}
+					tmp_rh->cbdata = cbdata;
+				} else {
+					/* remove existing handler */
+					*lastref = tmp_rh->next;
+					tmp_rh->uri = null;
+					tmp_rh = null;
+				}
+				atomic_unlock(&ctx->nonce_mutex);
+				return;
+			}
 		}
-		atomic_unlock(&ctx->nonce_mutex);
-	} else if (is_delete_request) {
-		/* no handler to set, this was a remove request to a non-existing handler */
-		return;
-	} else if (is_type(ctx->handlers, DATA_HASHTABLE)) {
-		atomic_lock(&ctx->nonce_mutex);
-		if (handler_type == WEBSOCKET_HANDLER) {
-			uri_route = arrays(7, connect_handler, ready_handler,
-				data_handler, close_handler, subprotocols, cbdata, casting(handler_type));
-			$tuple(uri_route);
-			hash_put(ctx->handlers, uri, uri_route);
-		} else {
-			uri_route = arrays(3, (handler_type == REQUEST_HANDLER
-				? handler : /* AUTH_HANDLER */ auth_handler), cbdata, casting(handler_type));
-			$tuple(uri_route);
-			hash_put(ctx->handlers, uri, uri_route);
-		}
-		atomic_unlock(&ctx->nonce_mutex);
+		lastref = &(tmp_rh->next);
 	}
+
+	if (is_delete_request) {
+		/* no handler to set, this was a remove request to a non-existing
+		 * handler */
+		atomic_unlock(&ctx->nonce_mutex);
+		return;
+	}
+
+	if (defer_free(tmp_rh = (struct http_cb_info *)calloc(1, sizeof(struct http_cb_info)))) {
+		tmp_rh->uri = str_dup(uri);
+		tmp_rh->uri_len = urilen;
+		if (handler_type == REQUEST_HANDLER) {
+			tmp_rh->handler = handler;
+		} else if (handler_type == WEBSOCKET_HANDLER) {
+			tmp_rh->subprotocols = subprotocols;
+			tmp_rh->connect_handler = connect_handler;
+			tmp_rh->ready_handler = ready_handler;
+			tmp_rh->data_handler = data_handler;
+			tmp_rh->close_handler = close_handler;
+		} else { /* AUTH_HANDLER */
+			tmp_rh->auth_handler = auth_handler;
+		}
+		tmp_rh->cbdata = cbdata;
+		tmp_rh->handler_type = handler_type;
+		tmp_rh->next = NULL;
+
+		*lastref = tmp_rh;
+	} else {
+		atomic_unlock(&ctx->nonce_mutex);
+		http_log(DEBUG_ERROR, NULL, "%s: cannot create new request handler struct, OOM", __func__);
+		return;
+	}
+
+	atomic_unlock(&ctx->nonce_mutex);
 }
 
 FORCEINLINE void http_route(http_ini_t *ctx, string_t uri, route_cb handler, void_t cbdata) {
-	http_set_handler2(ctx, uri, REQUEST_HANDLER, (handler == NULL), handler,
+	http_set_handler(ctx, uri, REQUEST_HANDLER, (handler == NULL), handler,
 		NULL, NULL, NULL, NULL, NULL, NULL, cbdata);
 }
 
@@ -2639,7 +2692,7 @@ FORCEINLINE void http_websocket_route(http_ini_t *ctx, string_t uri,
 	bool is_delete_request = (connect_handler == NULL) && (ready_handler == NULL)
 		&& (data_handler == NULL) && (close_handler == NULL);
 
-	http_set_handler2(ctx, uri, WEBSOCKET_HANDLER, is_delete_request, NULL, NULL,
+	http_set_handler(ctx, uri, WEBSOCKET_HANDLER, is_delete_request, NULL, NULL,
 		connect_handler, ready_handler, data_handler, close_handler, NULL, cbdata);
 }
 
@@ -2653,6 +2706,6 @@ FORCEINLINE void http_websocket_route_subprotocol(http_ini_t *ctx, string_t uri,
 	bool is_delete_request = (connect_handler == NULL) && (ready_handler == NULL)
 		&& (data_handler == NULL) && (close_handler == NULL);
 
-	http_set_handler2(ctx, uri, WEBSOCKET_HANDLER, is_delete_request, NULL, subprotocols,
+	http_set_handler(ctx, uri, WEBSOCKET_HANDLER, is_delete_request, NULL, subprotocols,
 		connect_handler, ready_handler, data_handler, close_handler, NULL, cbdata);
 }
