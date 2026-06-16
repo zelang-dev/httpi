@@ -7,7 +7,7 @@ endif()
 
 project(httpi
 	VERSION 0.1.0
-	DESCRIPTION "Httpi - a dual Web client/server and JavaScript processor"
+	DESCRIPTION "httpi - The infinite, dual Web client/server and JavaScript processor, powered by Green Threads!"
     LANGUAGES C
 )
 
@@ -52,6 +52,15 @@ else()
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /D USE_DEBUG")
 endif()
 
+find_package(events QUIET)
+if(NOT events_FOUND)
+    FetchContent_Declare(events
+        URL https://github.com/zelang-dev/c-events/archive/refs/tags/0.8.1.zip
+        URL_MD5 479e5c31138f5208f2c27a7829a84a99
+    )
+    FetchContent_MakeAvailable(events)
+endif()
+
 file(GLOB httpi_files
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c
 )
@@ -78,19 +87,12 @@ endif()
 
 add_library(HTTPI::WEB ALIAS ${SUB_PROJECT})
 target_include_directories(${SUB_PROJECT}
+	PRIVATE $<BUILD_INTERFACE:${EVENTS_INCLUDE_DIR} $<INSTALL_INTERFACE:${EVENTS_INCLUDE_DIR})
+
+target_include_directories(${SUB_PROJECT}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 
-find_package(events QUIET)
-if(NOT events_FOUND)
-    FetchContent_Declare(events
-        URL https://github.com/zelang-dev/c-events/archive/refs/tags/0.8.0.zip
-        URL_MD5 7dba0729f74fbb1711a2aca4e32ba1ba
-    )
-    FetchContent_MakeAvailable(events)
-endif()
-target_include_directories(${SUB_PROJECT}
-	PRIVATE $<BUILD_INTERFACE:${EVENTS_INCLUDE_DIR} $<INSTALL_INTERFACE:${EVENTS_INCLUDE_DIR})
 target_link_libraries(${SUB_PROJECT} PUBLIC EVENTS::LOOP)
 
 find_package(ZLIB CONFIG)
@@ -120,6 +122,7 @@ target_include_directories(${SUB_PROJECT}
 	PRIVATE $<BUILD_INTERFACE:${ZLIB_INCLUDE_DIRS} $<INSTALL_INTERFACE:${ZLIB_INCLUDE_DIRS})
 
 if(BUILD_SHARED_LIBS)
+	set(ENV{QJS_BUILD_CLI_STATIC} "OFF")
 	target_link_libraries(${SUB_PROJECT} PUBLIC ZLIB::ZLIB)
 else()
 	set(ENV{QJS_BUILD_CLI_STATIC} "ON")
@@ -129,11 +132,6 @@ endif()
 find_package(quickjs QUIET)
 if(NOT quickjs_FOUND)
 	set(ENV{QJS_BUILD_EXAMPLES} "OFF")
-    if(WIN32)
-		set(ENV{QJS_BUILD_CLI_STATIC} "ON")
-	else()
-		set(ENV{QJS_BUILD_CLI_STATIC} "OFF")
-    endif()
 	set(ENV{QJS_BUILD_LIBC} "ON")
     FetchContent_Declare(quickjs
         URL https://github.com/quickjs-ng/quickjs/archive/refs/tags/v0.15.1.zip

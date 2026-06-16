@@ -120,7 +120,7 @@ void main_main(param_t args) {
 		"/zelang-dev/c-events/",
 		NULL /* no check */);
 
-	use_ca_certificate("cert.pem");
+	use_ca_certificate("../cert.pem");
 
 	/* Call as a https client */
 	minimal_https_client_check(external_ip[0],

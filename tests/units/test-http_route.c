@@ -2,9 +2,9 @@
 #include <openssl/md5.h>
 
 #if defined(_WIN32)
-#   define TESTDIR "../../httpi/tests/units"
+#   define TESTDIR "../../tests/units"
 #else
-#   define TESTDIR "../httpi/tests/units"
+#   define TESTDIR "../tests/units"
 #endif
 
 void check_func(int condition, string_t cond_txt, unsigned line);
@@ -268,23 +268,23 @@ void main_main(http_ini_t *ctx) {
 	char cmd_buf[256];
 
 	for (i = 0; i < 1000; i++) {
-		sprintf(uri, "/U%u", i);
+		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
 		http_route(ctx, uri, request_test_handler, NULL);
 	}
 	for (i = 500; i < 800; i++) {
-		sprintf(uri, "/U%u", i);
+		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
 		http_route(ctx, uri, NULL, (void *)1);
 	}
 	for (i = 600; i >= 0; i--) {
-		sprintf(uri, "/U%u", i);
+		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
 		http_route(ctx, uri, NULL, (void *)2);
 	}
 	for (i = 750; i <= 1000; i++) {
-		sprintf(uri, "/U%u", i);
+		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
 		http_route(ctx, uri, NULL, (void *)3);
 	}
 	for (i = 5; i < 9; i++) {
-		sprintf(uri, "/U%u", i);
+		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
 		http_route(ctx, uri, request_test_handler, (void *)(ptrdiff_t)i);
 	}
 

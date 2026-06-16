@@ -19,3 +19,5 @@ endforeach()
 
 add_executable(cgi_test cgi_test.c)
 target_link_libraries(cgi_test ${SUB_PROJECT})
+
+file(COPY ../../cert.pem DESTINATION ${BUILD_DIR})

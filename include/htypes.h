@@ -99,19 +99,6 @@ typedef enum {
 #	define nullptr NULL
 #endif
 
-/**
- * Simple macro for making sure memory addresses are aligned
- * to the nearest power of two
- */
-#ifndef align_up
-#define align_up(num, align) (((num) + ((align)-1)) & ~((align)-1))
-#endif
-
-#ifndef container_of
-#define container_of(ptr, type, member) \
-                      ((type *) ((char *)(ptr) - offsetof(type, member)))
-#endif
-
 #ifndef C_API
  /* Public API qualifier. */
 #   define C_API extern

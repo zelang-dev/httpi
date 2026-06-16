@@ -241,6 +241,7 @@ void http_stop(http_ini_t *ctx) {
 		os_sleep(1000);
 #endif
 	http_free_ini(ctx);
+	thrd_pool_shutdown();
 }
 
 void http_close_listening_sockets(http_ini_t *ctx) {
@@ -273,12 +274,10 @@ void http_close_listening_sockets(http_ini_t *ctx) {
 		}
 	}
 
-	/* `rpmalloc` bug or doing as designed, memory already released.
-	 * A check has been added to `rpfree()` to just return,
+	/* `rpmalloc` bug or doing as designed, will cause hang in atexit(), program exit,
+	 * memory already released. A check has been added to `rpfree()` to just return,
 	 * do nothing, mostly works just not here. */
-#if defined(NO_RPMALLOC)
 	$delete(listeners);
-#endif
 }
 
 void http_free_ini(http_ini_t *ctx) {
@@ -287,8 +286,20 @@ void http_free_ini(http_ini_t *ctx) {
 	if (!is_type(ctx, (data_types)DATA_HTTP_SERVER))
 		return;
 
-	http_close_listening_sockets(ctx);
 	atomic_flag_clear(&ctx->nonce_mutex);
+	http_close_listening_sockets(ctx);
+
+	/* Deallocate request handlers */
+	while (ctx->handlers != NULL) {
+		tmp_rh = ctx->handlers;
+		ctx->handlers = tmp_rh->next;
+		tmp_rh->uri = str_free(tmp_rh->uri);
+		tmp_rh = free_ex(tmp_rh);
+	}
+
+	if (is_type(ctx->routers, DATA_HASHTABLE))
+		hash_free(ctx->routers);
+
 	free(ctx);
 }
 
@@ -427,6 +438,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	}
 
 	new_dom->handlers = ctx->host.handlers;
+	new_dom->routers = ctx->host.routers;
 	new_dom->next = NULL;
 	new_dom->nonce_count = 0;
 	http_get_random(&nonce2);
@@ -518,24 +530,20 @@ http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
 		return nullptr;
 	}
 
-	//ctx->options = array();
-	//if (is_empty(ctx->options)) {
-	////	$delete(ctx->server_sockets);
-	//	free(ctx);
-	//	return nullptr;
-	//}
-
 	if (http_ini_options(ctx, (string_t *)options))
 		return nullptr;
 
-	if (events_init((max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd)))
+	ctx->max_fd = max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd;
+	if (events_init(ctx->max_fd))
 		return http_abort_start(ctx, "Error setting `events_init()`");
 
 	/* Random number generator will initialize at the first call */
 	if (!http_get_random(&nonce))
 		return http_abort_start(ctx, "Cannot initialize random number generator");
 
+	ctx->routers = hash_create_array(ctx->max_fd);
 	ctx->host.auth_nonce_mask = nonce ^ (uint64_t)(ptrdiff_t)(options);
+	ctx->host.routers = ctx->routers;
 	ctx->host.handlers = null;
 	ctx->host.next = null;
 	atomic_flag_clear(&ctx->nonce_mutex);

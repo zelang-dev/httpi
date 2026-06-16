@@ -2,9 +2,9 @@
 #include <openssl/md5.h>
 
 #if defined(_WIN32)
-#   define TESTDIR "../../httpi/tests/units"
+#   define TESTDIR "../../tests/units"
 #else
-#   define TESTDIR "../httpi/tests/units"
+#   define TESTDIR "../tests/units"
 #endif
 
 void check_func(int condition, string_t cond_txt, unsigned line);

@@ -260,6 +260,8 @@ struct ws_subprotocols_s {
 struct http_cb_info {
 	/* handler type */
 	int handler_type;
+	int removing;
+	unsigned int refcount;
 	size_t uri_len;
 	/* Name/Pattern of the URI. */
 	char *uri;
@@ -430,6 +432,8 @@ struct ini_domain_s {
 	unsigned long nonce_count;
 	 /* tls context */
 	tls_s *tls_ctx;
+	/* hashtable of uri route handlers */
+	hash_t *routers;
 	/* Linked list of domains */
 	struct ini_domain_s *next;
 	 /* linked list of uri handlers */
@@ -455,6 +459,7 @@ struct http_ini_s {
 	enum http_type_t http_type;
 	enum http_dbg debug_level;
 	int enable_keep_alive;
+	int max_fd;
 	/* Memory related */
 	/* The max request size */
 	unsigned int max_request_size;
@@ -474,6 +479,8 @@ struct http_ini_s {
 	//array_t options;
 	/* Array of `http_socket` listening sockets */
 	array_t server_sockets;
+	/* hashtable of uri route handlers */
+	hash_t *routers;
 	/* linked list of uri handlers */
 	struct http_cb_info *handlers;
 	/* Part 2 - Logical domain:
@@ -881,6 +888,15 @@ string_t http_get_rel_url_at_current_server(string_t uri, http_t *conn);
 /* Convert time_t to a string. According to RFC2616, Sec 14.18, this must be
  * included in all responses other than 100, 101, 5xx. */
 void http_gmt_time_str(char *buf, size_t buf_len, time_t *t);
+
+/* Setup hashtable to hold callback handlers to uri's. */
+void http_set_handler_table(http_ini_t *ctx,
+	string_t uri, enum route_type_t handler_type,
+	bool is_delete_request, route_cb handler,
+	struct ws_subprotocols_s *subprotocols,
+	ws_connect_cb connect_handler, ws_ready_cb ready_handler,
+	ws_data_cb data_handler, ws_close_cb close_handler,
+	auth_cb auth_handler, void_t cbdata);
 
 /* Sets callback handlers to uri's. */
 void http_set_handler(http_ini_t *ctx,
