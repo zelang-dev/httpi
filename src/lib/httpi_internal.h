@@ -432,8 +432,6 @@ struct ini_domain_s {
 	unsigned long nonce_count;
 	 /* tls context */
 	tls_s *tls_ctx;
-	/* hashtable of uri route handlers */
-	hash_t *routers;
 	/* Linked list of domains */
 	struct ini_domain_s *next;
 	 /* linked list of uri handlers */
@@ -459,7 +457,7 @@ struct http_ini_s {
 	enum http_type_t http_type;
 	enum http_dbg debug_level;
 	int enable_keep_alive;
-	int max_fd;
+	//int max_fd;
 	/* Memory related */
 	/* The max request size */
 	unsigned int max_request_size;
@@ -476,11 +474,8 @@ struct http_ini_s {
 	void *user_data;
 	/* User-defined callback function */
 	http_clb_t callbacks;
-	//array_t options;
 	/* Array of `http_socket` listening sockets */
 	array_t server_sockets;
-	/* hashtable of uri route handlers */
-	hash_t *routers;
 	/* linked list of uri handlers */
 	struct http_cb_info *handlers;
 	/* Part 2 - Logical domain:
@@ -899,7 +894,7 @@ void http_set_handler_table(http_ini_t *ctx,
 	auth_cb auth_handler, void_t cbdata);
 
 /* Sets callback handlers to uri's. */
-void http_set_handler(http_ini_t *ctx,
+void set_handler_type(http_ini_t *ctx,
 	string_t uri, enum route_type_t handler_type,
 	bool is_delete_request, route_cb handler,
 	struct ws_subprotocols_s *subprotocols,

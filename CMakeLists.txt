@@ -55,8 +55,8 @@ endif()
 find_package(events QUIET)
 if(NOT events_FOUND)
     FetchContent_Declare(events
-        URL https://github.com/zelang-dev/c-events/archive/refs/tags/0.8.1.zip
-        URL_MD5 479e5c31138f5208f2c27a7829a84a99
+        URL https://github.com/zelang-dev/c-events/archive/refs/heads/main.zip
+        URL_MD5 3a6c893d59808b3031dcf87274d4b58b
     )
     FetchContent_MakeAvailable(events)
 endif()

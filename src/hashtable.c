@@ -175,13 +175,15 @@ void hash_free(hash_t *htable) {
 		if (buckets)
 			free(buckets);
 
-		memset(htable, DATA_INVALID, sizeof(data_types));
 		free(htable);
 	}
 }
 
 static FORCEINLINE void hash_grow(hash_t *htable) {
-    u32 i, old_capacity;
+	if (!is_type(htable, DATA_HASHTABLE))
+		return;
+
+	u32 i, old_capacity;
     hash_pair_t **old_buckets;
     hash_pair_t *crt_pair;
 
@@ -339,26 +341,30 @@ void_t hash_replace(hash_t *htable, const_t key, const_t value) {
 }
 
 static FORCEINLINE bool hash_is_tombstone(hash_t *htable, size_t idx) {
-    hash_pair_t *buckets = (hash_pair_t *)atomic_load(&htable->buckets[idx]);
-    if (is_empty(buckets))
-        return false;
+	if (is_type(htable, DATA_HASHTABLE)) {
+		hash_pair_t *buckets = (hash_pair_t *)atomic_load(&htable->buckets[idx]);
+		if (is_empty(buckets))
+			return false;
 
-    if (is_empty(buckets->key) && is_empty(buckets->value) && 0 == buckets->hash)
-        return true;
+		if (is_empty(buckets->key) && is_empty(buckets->value) && 0 == buckets->hash)
+			return true;
+	}
 
     return false;
 }
 
 static FORCEINLINE void hash_put_tombstone(hash_t *htable, size_t idx) {
-    if (!is_empty(atomic_get(void_t, &htable->buckets[idx]))) {
-        hash_pair_t **buckets = (hash_pair_t **)atomic_load_explicit(&htable->buckets, memory_order_acquire);
-        atomic_thread_fence(memory_order_seq_cst);
-        buckets[idx]->hash = 0;
-        buckets[idx]->key = nullptr;
-        buckets[idx]->value = nullptr;
-        buckets[idx]->type = DATA_NULL;
-		atomic_store_explicit(&htable->buckets, (atomic_hash_pair_t **)buckets, memory_order_release);
-    }
+	if (is_type(htable, DATA_HASHTABLE)) {
+		if (!is_empty(atomic_get(void_t, &htable->buckets[idx]))) {
+			hash_pair_t **buckets = (hash_pair_t **)atomic_load_explicit(&htable->buckets, memory_order_acquire);
+			atomic_thread_fence(memory_order_seq_cst);
+			buckets[idx]->hash = 0;
+			buckets[idx]->key = nullptr;
+			buckets[idx]->value = nullptr;
+			buckets[idx]->type = DATA_NULL;
+			atomic_store_explicit(&htable->buckets, (atomic_hash_pair_t **)buckets, memory_order_release);
+		}
+	}
 }
 
 template_t *hash_get_value(hash_t *htable, const_t key) {
@@ -383,7 +389,10 @@ void_t hash_get(hash_t *htable, const_t key) {
 }
 
 hash_pair_t *hash_get_pair(hash_t *htable, const_t key) {
-    uint32_t hash_val = htable->key_ops.hash(key);
+	if (!is_type(htable, DATA_HASHTABLE))
+		return nullptr;
+
+	uint32_t hash_val = htable->key_ops.hash(key);
     size_t idx = hash_val % (u32)atomic_load(&htable->capacity);
 
     if (is_empty(atomic_load(&htable->buckets[idx])))

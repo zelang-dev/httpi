@@ -241,43 +241,42 @@ void http_stop(http_ini_t *ctx) {
 		os_sleep(1000);
 #endif
 	http_free_ini(ctx);
-	thrd_pool_shutdown();
 }
 
 void http_close_listening_sockets(http_ini_t *ctx) {
-	if (!is_type(ctx, (data_types)DATA_HTTP_SERVER) || !is_data(ctx->server_sockets))
-		return;
+	if (is_type(ctx, (data_types)DATA_HTTP_SERVER)) {
+		if ($size(ctx->server_sockets) > 0) {
+			foreach(sockets in ctx->server_sockets) {
+				http_socket *socket = (http_socket *)sockets.object;
+				/* For unix domain sockets, the socket name represents a file that has
+				 * to be deleted. */
+				/* See https://stackoverflow.com/questions/15716302/so-reuseaddr-and-af-unix */
+				if ((socket->lsa.sin.sin_family == AF_UNIX)
+					&& (socket->sock != INVALID_SOCKET))
+					(void)remove(socket->lsa.sun.sun_path);
 
-	array_t listeners = ctx->server_sockets;
-	ctx->server_sockets = null;
-	if ($size(listeners) > 0) {
-		foreach(sockets in listeners) {
-			http_socket *socket = (http_socket *)sockets.object;
-			/* For unix domain sockets, the socket name represents a file that has
-			 * to be deleted. */
-			/* See https://stackoverflow.com/questions/15716302/so-reuseaddr-and-af-unix */
-			if ((socket->lsa.sin.sin_family == AF_UNIX)
-				&& (socket->sock != INVALID_SOCKET))
-				(void)remove(socket->lsa.sun.sun_path);
+				if (http_atexit_ctrl_c_flag) {
+					events_del(socket->sock);
+					events_task_unwind(socket->task);
+				} else if (!is_empty(socket->task)) {
+					events_del(socket->sock);
+					resume(socket->task);
+				}
 
-			if (http_atexit_ctrl_c_flag) {
-				events_del(socket->sock);
-				events_task_unwind(socket->task);
-			} else if (!is_empty(socket->task)) {
-				events_del(socket->sock);
-				resume(socket->task);
+				tls_closer(socket2fd(socket->sock));
+				socket->sock = INVALID_SOCKET;
+				free(socket);
 			}
-
-			tls_closer(socket2fd(socket->sock));
-			socket->sock = INVALID_SOCKET;
-			free(socket);
 		}
-	}
 
-	/* `rpmalloc` bug or doing as designed, will cause hang in atexit(), program exit,
-	 * memory already released. A check has been added to `rpfree()` to just return,
-	 * do nothing, mostly works just not here. */
-	$delete(listeners);
+		/* `rpmalloc` bug or doing as designed, will cause hang in atexit(), program exit,
+		 * memory already released. A check has been added to `rpfree()` to just return,
+		 * do nothing, mostly works just not here. */
+#if defined(NO_RPMALLOC)
+		$delete(ctx->server_sockets);
+#endif
+		ctx->server_sockets = null;
+	}
 }
 
 void http_free_ini(http_ini_t *ctx) {
@@ -293,12 +292,9 @@ void http_free_ini(http_ini_t *ctx) {
 	while (ctx->handlers != NULL) {
 		tmp_rh = ctx->handlers;
 		ctx->handlers = tmp_rh->next;
-		tmp_rh->uri = str_free(tmp_rh->uri);
+		tmp_rh->uri = free_ex(tmp_rh->uri);
 		tmp_rh = free_ex(tmp_rh);
 	}
-
-	if (is_type(ctx->routers, DATA_HASHTABLE))
-		hash_free(ctx->routers);
 
 	free(ctx);
 }
@@ -438,7 +434,6 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	}
 
 	new_dom->handlers = ctx->host.handlers;
-	new_dom->routers = ctx->host.routers;
 	new_dom->next = NULL;
 	new_dom->nonce_count = 0;
 	http_get_random(&nonce2);
@@ -533,20 +528,17 @@ http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
 	if (http_ini_options(ctx, (string_t *)options))
 		return nullptr;
 
-	ctx->max_fd = max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd;
-	if (events_init(ctx->max_fd))
+	if (events_init(max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd))
 		return http_abort_start(ctx, "Error setting `events_init()`");
 
-	/* Random number generator will initialize at the first call */
 	if (!http_get_random(&nonce))
 		return http_abort_start(ctx, "Cannot initialize random number generator");
 
-	ctx->routers = hash_create_array(ctx->max_fd);
+	atomic_flag_clear(&ctx->nonce_mutex);
 	ctx->host.auth_nonce_mask = nonce ^ (uint64_t)(ptrdiff_t)(options);
-	ctx->host.routers = ctx->routers;
+	ctx->handlers = null;
 	ctx->host.handlers = null;
 	ctx->host.next = null;
-	atomic_flag_clear(&ctx->nonce_mutex);
 	ctx->user_data = user_data;
 	ctx->systemName = events_sysname();
 
