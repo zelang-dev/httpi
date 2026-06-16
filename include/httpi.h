@@ -39,7 +39,6 @@ typedef struct http_ini_s http_ini_t;
 typedef struct ini_option options_ini_t;
 typedef struct http2_s http2_t;
 typedef struct h2_header h2_header_t;
-typedef struct form_data_handler_s form_data_handler_t;
 typedef struct http_server_port http_server_port_t;
 typedef struct httpi_s httpi_t;
 typedef struct httpi_ws_s httpi_ws_t;
