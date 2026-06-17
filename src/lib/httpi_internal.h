@@ -260,8 +260,6 @@ struct ws_subprotocols_s {
 struct http_cb_info {
 	/* handler type */
 	int handler_type;
-	int removing;
-	unsigned int refcount;
 	size_t uri_len;
 	/* Name/Pattern of the URI. */
 	char *uri;
@@ -302,9 +300,9 @@ struct server_socket_s {
 	/* Shouldn't cause us to exit if we can't bind to it */
 	unsigned char is_optional;
 	/* Is port SSL-ed */
-	bool has_ssl;
+	unsigned char has_ssl;
 	/* Is port supposed to redirect everything to SSL port	*/
-	bool has_redir;
+	unsigned char has_redir;
 	/* Local socket address */
 	u_saddr_t lsa;
 	/* Remote socket address */
@@ -374,7 +372,7 @@ struct http_ini_s {
 	enum http_type_t http_type;
 	enum http_dbg debug_level;
 	int enable_keep_alive;
-	//int max_fd;
+	int max_fd;
 	/* Memory related */
 	/* The max request size */
 	unsigned int max_request_size;

@@ -109,7 +109,7 @@ static void http_handler(opaque_t connected) {
 	/* Request buffers are not pre-allocated. They are private to the
 	 * request and do not contain any state information that might be
 	 * of interest to anyone observing a server status.  */
-	conn->req.buf = calloc(1, conn->ctx->max_request_size + 1);
+	conn->req.buf = calloc(1, conn->ctx->max_request_size + 2);
 	if (conn->req.buf == NULL) {
 		http_log(DEBUG_CRASH, conn, "Out of memory: Cannot allocate buffer for task #%i", task_id());
 	} else {

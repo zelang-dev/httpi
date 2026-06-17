@@ -2324,7 +2324,7 @@ http_t *http_connect_impl(const struct client_options *client_options,
 		return NULL;
 	}
 
-	if (is_empty(conn->req.buf = (char *)calloc(1, max_req_size + 1))) {
+	if (is_empty(conn->req.buf = (char *)calloc(1, max_req_size + 2)))  {
 		free(conn->ctx);
 		free(conn);
 		if (error != NULL) {

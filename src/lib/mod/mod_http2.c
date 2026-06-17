@@ -678,7 +678,7 @@ static char *hpack_decode(const uint8_t *buf, int *i, int max_i, http_ini_t *ctx
 	/* Now read the string */
 	if (!is_huff) {
 		/* Not huffman encoded: Copy directly */
-		char *result = (char *)malloc(byte_len + 1);
+		char *result = (char *)calloc(1, _mem_align_up(byte_len + 1, 2));
 		if (result) {
 			memcpy(result, buf + (*i), byte_len);
 			result[byte_len] = 0;
