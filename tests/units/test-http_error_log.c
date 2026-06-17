@@ -251,7 +251,7 @@ TEST(error_log) {
 	FILE *f;
 
 	char bad_thread_num[32] = "badnumber";
-	http_clb_t callbacks;
+	user_callbacks_t callbacks;
 	char errmsg[256];
 	char client_err[256];
 	const httpi_t *client_ri;

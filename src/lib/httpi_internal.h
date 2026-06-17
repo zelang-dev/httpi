@@ -257,7 +257,7 @@ struct ws_subprotocols_s {
 	string_t *subprotocols;
 };
 
-struct http_cb_info {
+struct uri_handler_info {
 	/* handler type */
 	int handler_type;
 	size_t uri_len;
@@ -282,7 +282,7 @@ struct http_cb_info {
 	struct ws_subprotocols_s *subprotocols;
 
 	/* next handler in a linked list */
-	struct http_cb_info *next;
+	struct uri_handler_info *next;
 };
 
 /* Record of a port a server/client is listening on
@@ -350,7 +350,7 @@ struct ini_domain_s {
 	/* Linked list of domains */
 	struct ini_domain_s *next;
 	 /* linked list of uri handlers */
-	struct http_cb_info *handlers;
+	struct uri_handler_info *handlers;
 	/* `HttPi` configuration parameters */
 	char *config[NUM_OPTIONS];
 	/* Protects nonce_count */
@@ -388,11 +388,9 @@ struct http_ini_s {
 	/* User-defined data */
 	void *user_data;
 	/* User-defined callback function */
-	http_clb_t callbacks;
+	user_callbacks_t callbacks;
 	/* Array of `http_socket` listening sockets */
 	array_t server_sockets;
-	/* linked list of uri handlers */
-	struct http_cb_info *handlers;
 	/* Part 2 - Logical domain:
 	 * This holds hostname, TLS certificate, document root, ...
 	 * set for a domain hosted at the server.
@@ -798,15 +796,6 @@ string_t http_get_rel_url_at_current_server(string_t uri, http_t *conn);
 /* Convert time_t to a string. According to RFC2616, Sec 14.18, this must be
  * included in all responses other than 100, 101, 5xx. */
 void http_gmt_time_str(char *buf, size_t buf_len, time_t *t);
-
-/* Setup hashtable to hold callback handlers to uri's. */
-void http_set_handler_table(http_ini_t *ctx,
-	string_t uri, enum route_type_t handler_type,
-	bool is_delete_request, route_cb handler,
-	struct ws_subprotocols_s *subprotocols,
-	ws_connect_cb connect_handler, ws_ready_cb ready_handler,
-	ws_data_cb data_handler, ws_close_cb close_handler,
-	auth_cb auth_handler, void_t cbdata);
 
 /* Sets callback handlers to uri's. */
 void set_handler_type(http_ini_t *ctx,

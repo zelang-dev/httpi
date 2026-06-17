@@ -88,7 +88,7 @@ static int test_large_file_begin_request(http_t *conn) {
 TEST(large_file) {
 	/* Server var */
 	http_ini_t *ctx;
-	http_clb_t callbacks;
+	user_callbacks_t callbacks;
 	const char *OPTIONS[32];
 	int opt_cnt = 0;
 #if !defined(NO_SSL)

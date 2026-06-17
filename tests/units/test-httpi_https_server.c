@@ -231,7 +231,7 @@ TEST(httpi_https_start) {
 
 	/* Server context handle */
 	http_ini_t *ctx;
-	http_clb_t cb = http_callbacks(null, test_log_message, null, null, null, null);
+	user_callbacks_t cb = http_callbacks(null, test_log_message, null, null, null, null);
 
 	/* Initialize the library */
 	ASSERT_TRUE(is_type(ctx = httpi_setup(0, &cb, null, server_opts(OPTIONS)), (data_types)DATA_HTTP_SERVER));

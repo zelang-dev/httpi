@@ -134,7 +134,7 @@ TEST(http_store_body) {
 
 	/* Server context handle */
 	http_ini_t *ctx;
-	http_clb_t callbacks;
+	user_callbacks_t callbacks;
 	const char *options[] = {
 #if !defined(NO_FILES)
 		"document_root",

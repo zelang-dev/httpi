@@ -1311,8 +1311,8 @@ void http_log(enum http_dbg debug_level, http_t *conn, string_t fmt, ...) {
 	 * We now try to open the error log file. If this succeeds the error is
 	 * appended to the file. */
 	if (is_empty(conn)
-		|| ((!is_empty(conn->ctx->callbacks.log_message) && conn->ctx->callbacks.log_message(conn, buf) == 0)
-			|| is_empty(conn->ctx->error_log_file))) {
+		|| (!is_empty(conn->ctx->callbacks.log_message) && conn->ctx->callbacks.log_message(conn, buf) == 0)
+		|| is_empty(conn->domain->config[ERROR_LOG_FILE])) {
 		cerr("[%010lu]%s: %s"CLR_LN, (unsigned long)timestamp, log_level_str(debug_level), buf);
 		return;
 	}
@@ -1321,7 +1321,19 @@ void http_log(enum http_dbg debug_level, http_t *conn, string_t fmt, ...) {
 		(unsigned long)timestamp, log_level_str(debug_level), conn->req.remote_addr, conn->method, conn->uri);
 	string_t data = str_cat_ex(4, clientbuf, " ", buf, "\n");
 	if (!is_empty(data)) {
-		async_fprintf((string_t)conn->ctx->error_log_file, "a+", data);
+		if (events_is_active() && tasks_is_active()) {
+			async_fprintf((string_t)conn->domain->config[ERROR_LOG_FILE], "a+", data);
+		} else {
+			if ((fi = fopen(conn->domain->config[ERROR_LOG_FILE], "a+")) != NULL) {
+				flockfile(fi);
+				int count = fprintf(fi, "%s", data);
+				if (count > 0)
+					fflush(fi);
+
+				funlockfile(fi);
+				fclose(fi);
+			}
+		}
 		str_free((void_t)data);
 	}
 }
@@ -2563,7 +2575,7 @@ void set_handler_type(http_ini_t *ctx,
 	ws_connect_cb connect_handler, ws_ready_cb ready_handler,
 	ws_data_cb data_handler, ws_close_cb close_handler,
 	auth_cb auth_handler, void_t cbdata) {
-	struct http_cb_info *tmp_rh, **lastref;
+	struct uri_handler_info *tmp_rh, **lastref;
 	size_t urilen;
 
 	if (uri == NULL) return;
@@ -2587,13 +2599,14 @@ void set_handler_type(http_ini_t *ctx,
 	}
 
 	if (!is_type(ctx, (data_types)DATA_HTTP_SERVER)) return;
+	struct ini_domain_s *dom = &ctx->host;
 	atomic_lock(&ctx->nonce_mutex);
 
 	/*
 	 * first try to find an existing handler
 	 */
-	lastref = &ctx->handlers;
-	for (tmp_rh = ctx->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
+	lastref = &dom->handlers;
+	for (tmp_rh = dom->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
 		if (tmp_rh->handler_type == handler_type) {
 			if (urilen == tmp_rh->uri_len && !strcmp(tmp_rh->uri, uri)) {
 				if (!is_delete_request) {
@@ -2624,7 +2637,7 @@ void set_handler_type(http_ini_t *ctx,
 				return;
 			}
 		}
-		lastref = &tmp_rh->next;
+		lastref = &(tmp_rh->next);
 	}
 
 	if (is_delete_request) {
@@ -2636,7 +2649,7 @@ void set_handler_type(http_ini_t *ctx,
 		return;
 	}
 
-	tmp_rh = calloc(1, sizeof(struct http_cb_info));
+	tmp_rh = calloc(1, sizeof(struct uri_handler_info));
 	if (tmp_rh == NULL) {
 		atomic_unlock(&ctx->nonce_mutex);
 		http_log(DEBUG_ERROR, NULL, "%s: cannot create new request handler struct, OOM", __func__);
@@ -2654,9 +2667,7 @@ void set_handler_type(http_ini_t *ctx,
 	tmp_rh->uri_len = urilen;
 	if (handler_type == REQUEST_HANDLER) {
 		tmp_rh->handler = handler;
-	}
-
-	else if (handler_type == WEBSOCKET_HANDLER) {
+	} else if (handler_type == WEBSOCKET_HANDLER) {
 		tmp_rh->subprotocols = subprotocols;
 		tmp_rh->connect_handler = connect_handler;
 		tmp_rh->ready_handler = ready_handler;

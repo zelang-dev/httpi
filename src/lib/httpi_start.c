@@ -272,15 +272,16 @@ void http_close_listening_sockets(http_ini_t *ctx) {
 		/* `rpmalloc` bug or doing as designed, will cause hang in atexit(), program exit,
 		 * memory already released. A check has been added to `rpfree()` to just return,
 		 * do nothing, mostly works just not here. */
-#if defined(NO_RPMALLOC)
-		$delete(ctx->server_sockets);
-#endif
+		array_t server_sockets = ctx->server_sockets;
 		ctx->server_sockets = null;
+#if defined(NO_RPMALLOC)
+		$delete(server_sockets);
+#endif
 	}
 }
 
 void http_free_ini(http_ini_t *ctx) {
-	struct http_cb_info *tmp_rh;
+	struct uri_handler_info *tmp_rh;
 
 	if (!is_type(ctx, (data_types)DATA_HTTP_SERVER))
 		return;
@@ -289,9 +290,9 @@ void http_free_ini(http_ini_t *ctx) {
 	http_close_listening_sockets(ctx);
 
 	/* Deallocate request handlers */
-	while (ctx->handlers != NULL) {
-		tmp_rh = ctx->handlers;
-		ctx->handlers = tmp_rh->next;
+	while (ctx->host.handlers != NULL) {
+		tmp_rh = ctx->host.handlers;
+		ctx->host.handlers = tmp_rh->next;
 		tmp_rh->uri = free_ex(tmp_rh->uri);
 		tmp_rh = free_ex(tmp_rh);
 	}
@@ -302,6 +303,7 @@ void http_free_ini(http_ini_t *ctx) {
 http_ini_t *http_abort_start(http_ini_t *ctx, string_t fmt, ...) {
 	va_list ap;
 	char buf[Kb(2)] = {0};
+	http_t fc;
 
 	if (ctx == nullptr) return nullptr;
 
@@ -309,16 +311,16 @@ http_ini_t *http_abort_start(http_ini_t *ctx, string_t fmt, ...) {
 		va_start(ap, fmt);
 		vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
 		va_end(ap);
-		http_log(DEBUG_CRASH, nullptr, "%s: %s", __func__, buf);
+		http_log(DEBUG_CRASH, fake_conn(&fc, ctx), "%s: %s", __func__, buf);
 	}
 
 	http_free_ini(ctx);
 	return nullptr;
 }
 
-FORCEINLINE http_clb_t http_callbacks(request_cb handler, log_msg_cb message,
+FORCEINLINE user_callbacks_t http_callbacks(request_cb handler, log_msg_cb message,
 	log_access_cb log, file_open_cb file, http_error_cb error, upload_form_cb form) {
-	http_clb_t callbacks = {0};
+	user_callbacks_t callbacks = {0};
 	callbacks.handler = handler;
 	callbacks.http_error = error;
 	callbacks.log_access = log;
@@ -504,7 +506,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	return idx;
 }
 
-http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
+http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,
 	void_t user_data, const options_ini_t **options) {
 	uint64_t nonce = 0;
 	int i;
@@ -528,7 +530,8 @@ http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
 	if (http_ini_options(ctx, (string_t *)options))
 		return nullptr;
 
-	if (events_init(max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd))
+	ctx->max_fd = max_fd <= 0 ? atoi(ctx->host.config[MAX_FD]) : max_fd;
+	if (events_init(ctx->max_fd))
 		return http_abort_start(ctx, "Error setting `events_init()`");
 
 	if (!http_get_random(&nonce))
@@ -536,7 +539,6 @@ http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
 
 	atomic_flag_clear(&ctx->nonce_mutex);
 	ctx->host.auth_nonce_mask = nonce ^ (uint64_t)(ptrdiff_t)(options);
-	ctx->handlers = null;
 	ctx->host.handlers = null;
 	ctx->host.next = null;
 	ctx->user_data = user_data;
@@ -592,7 +594,7 @@ static void http_server_task(param_t args) {
 	while (is_type(ctx, (data_types)DATA_HTTP_SERVER) && ctx->status == HTTP_STATUS_RUNNING) {
 		if (!is_empty(conn = http_accept(listener, ctx))) {
 			conn->ctx = ctx;
-			go_guard(Kb(64), http_handler, httpi_cleanup, conn);
+			go_guard(Kb(48), http_handler, httpi_cleanup, conn);
 		}
 	}
 }
@@ -616,9 +618,12 @@ int http_server(http_ini_t *ctx) {
 
 static void http_main_task(param_t args) {
 	http_main_cb start = (http_main_cb)args[1].func;
+	http_ini_t *ctx = (http_ini_t *)args[0].object;
+
 	yield();
-	if (!is_empty(start))
-		start((http_ini_t *)args[0].object);
+	if (!is_empty(start)) guard {
+			start(ctx);
+	} guarded;
 }
 
 FORCEINLINE void httpi_start(http_ini_t *ctx, http_main_cb start) {

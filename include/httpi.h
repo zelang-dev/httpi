@@ -142,7 +142,7 @@ typedef void(*upload_form_cb)(http_t *, string_t file_name);
 
 /* This structure needs to be passed to httpi_setup(),
  * to let `HttPi` know which callbacks to invoke. */
-typedef struct http_clb_s {
+typedef struct user_callbacks_s {
 	/* handle everything callback*/
 	request_cb handler;
 	log_msg_cb log_message;
@@ -150,11 +150,11 @@ typedef struct http_clb_s {
 	file_open_cb open_file;
 	http_error_cb http_error;
 	upload_form_cb upload;
-} http_clb_t;
+} user_callbacks_t;
 
 struct init_data {
 	/* callback function pointer */
-	const http_clb_t *callbacks;
+	const user_callbacks_t *callbacks;
 	/* data */
 	void_t user_data;
 	string_t *configuration_options;
@@ -484,7 +484,7 @@ C_API int http_add_domain(http_ini_t *ctx, string_t *options);
  * or a negative number to indicate a failure. */
 C_API int64_t http_store_body(http_ini_t *ctx, http_t *conn, string_t path);
 
-C_API http_clb_t http_callbacks(request_cb handler, log_msg_cb message, log_access_cb log,
+C_API user_callbacks_t http_callbacks(request_cb handler, log_msg_cb message, log_access_cb log,
 	file_open_cb file, http_error_cb error, upload_form_cb form);
 
 /* Use to stop an instance of a `HttPi` server completely and return all its resources. */
@@ -548,7 +548,7 @@ C_API void_t http_user_data(const http_t *conn);
 C_API httpi_t *http_request_info(const http_t *conn);
 
 /* The main `setup` entry point for the `HttPi` server. */
-C_API http_ini_t *httpi_setup(int max_fd, http_clb_t *callbacks,
+C_API http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,
 	void_t user_data, const options_ini_t **options);
 
 /* Create/execute the `main task` ~coroutine~ `entry/start` point for `HttPi` server.

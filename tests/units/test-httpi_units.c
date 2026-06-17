@@ -277,7 +277,7 @@ string_t (*open_file)(const http_t *, string_t path, size_t *data_len);
 void (*init_lua)(http_t *, void *lua_context);
 void (*upload)(http_t *, string_t file_name);
 
-static struct http_clb_s CALLBACKS;
+static user_callbacks_t CALLBACKS;
 static string_t OPTIONS[] = {
     "document_root",
     ".",

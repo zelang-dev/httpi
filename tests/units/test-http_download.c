@@ -7,17 +7,9 @@
 #   define TESTDIR "../tests/units"
 #endif
 
-void check_func(int condition, string_t cond_txt, unsigned line);
-
-static int s_total_tests = 0;
-static int s_failed_tests = 0;
-
-void check_func(int condition, string_t cond_txt, unsigned line)
-{
-	++s_total_tests;
+void check_func(int condition, string_t cond_txt, unsigned line) {
 	if (!condition) {
 		printf("Fail on line %d: [%s]"CLR_LN, line, cond_txt);
-		++s_failed_tests;
 	}
 }
 
@@ -195,6 +187,9 @@ static int log_message_cb(const http_t *conn, string_t msg)
 }
 
 void main_main(http_ini_t *ctx) {
+	/* deferring stop the test server */
+	defer(http_stop, ctx);
+
 	bool use_ssl = false;
 	string_t test_data = "123456789A123456789B";
 
@@ -380,16 +375,13 @@ void main_main(http_ini_t *ctx) {
 	ASSERT(!strncmp(ebuf, "Error 404", 9));
 
 	http_close_connection(conn);
-
-	/* Stop the test server */
-	http_stop(ctx);
 }
 
 TEST(http_download) {
 	int result = 0;
 
 	http_ini_t *ctx;
-	http_clb_t cb = http_callbacks(begin_request_handler_cb, log_message_cb, NULL, open_file_cb, NULL, upload_cb);
+	user_callbacks_t cb = http_callbacks(begin_request_handler_cb, log_message_cb, NULL, open_file_cb, NULL, upload_cb);
 	ASSERT_TRUE(is_type(ctx = httpi_setup(0, &cb, NULL, server_opts(OPTIONS)), (data_types)DATA_HTTP_SERVER));
 	httpi_start(ctx, main_main);
 

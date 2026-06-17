@@ -506,9 +506,9 @@ int get_request_handler(http_t *conn,
 	const httpi_t *request_info;
 	const char *uri;
 	size_t urilen;
-	struct http_cb_info *tmp_rh;
+	struct uri_handler_info *tmp_rh;
 
-	if (conn == NULL) return 0;
+	if (!conn || !conn->ctx || !conn->domain)return 0;
 
 	request_info = http_request_info(conn);
 	if (request_info == NULL)
@@ -522,7 +522,7 @@ int get_request_handler(http_t *conn,
 	/*
 	 * first try for an exact match
 	 */
-	for (tmp_rh = conn->ctx->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
+	for (tmp_rh = conn->domain->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
 		if (tmp_rh->handler_type == handler_type) {
 			if (urilen == tmp_rh->uri_len && !strcmp(tmp_rh->uri, uri)) {
 				if (handler_type == WEBSOCKET_HANDLER) {
@@ -547,7 +547,7 @@ int get_request_handler(http_t *conn,
 	/*
 	 * next try for a partial match, we will accept uri/something
 	 */
-	for (tmp_rh = conn->ctx->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
+	for (tmp_rh = conn->domain->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
 		if (tmp_rh->handler_type == handler_type) {
 			if (tmp_rh->uri_len < urilen && uri[tmp_rh->uri_len] == '/'
 				&& memcmp(tmp_rh->uri, uri, tmp_rh->uri_len) == 0) {
@@ -573,7 +573,7 @@ int get_request_handler(http_t *conn,
 	/*
 	 * finally try for pattern match
 	 */
-	for (tmp_rh = conn->ctx->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
+	for (tmp_rh = conn->domain->handlers; tmp_rh != NULL; tmp_rh = tmp_rh->next) {
 		if (tmp_rh->handler_type == handler_type) {
 			if (http_match_prefix(tmp_rh->uri, tmp_rh->uri_len, uri) > 0) {
 				if (handler_type == WEBSOCKET_HANDLER) {
@@ -2449,7 +2449,7 @@ void http_handle_request(http_t *conn) {
 	int i;
 	struct file file = STRUCT_FILE_INITIALIZER;
 	route_cb callback_handler = NULL;
-	struct http_cb_info *handler_info = NULL;
+	struct uri_handler_info *handler_info = NULL;
 	struct ws_subprotocols_s *subprotocols;
 	ws_connect_cb ws_connect_handler = NULL;
 	ws_ready_cb ws_ready_handler = NULL;

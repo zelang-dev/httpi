@@ -130,7 +130,7 @@ TEST(parse_port_string) {
 TEST(httpi_setup) {
 	/* Server context handle */
 	http_ini_t *ctx;
-	http_clb_t cb;
+	user_callbacks_t cb;
 
 	memset(&cb, 0, sizeof(cb));
 	if (cb.log_message == NULL) {

@@ -3,10 +3,10 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 #   include <compat/dirent.h>
-#   define TESTDIR "../../httpi/tests/valid"
+#   define TESTDIR "../../tests/valid"
 #else
 #   include <dirent.h>
-#   define TESTDIR "../httpi/tests/valid"
+#   define TESTDIR "../tests/valid"
 #endif
 
 TEST(json_parse_file) {
