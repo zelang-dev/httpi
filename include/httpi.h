@@ -549,7 +549,7 @@ C_API httpi_t *http_request_info(const http_t *conn);
 
 /* The main `setup` entry point for the `HttPi` server. */
 C_API http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,
-	void_t user_data, const options_ini_t **options);
+	void_t user_data, const options_ini_t **options, string err, size_t err_len);
 
 /* Create/execute the `main task` ~coroutine~ `entry/start` point for `HttPi` server.
  *

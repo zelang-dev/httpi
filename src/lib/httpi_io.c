@@ -2162,7 +2162,7 @@ void http_process_connection(http_ini_t *ctx, http_t *conn) {
 
 		if (ebuf[0] == '\0') {
 			uri = http_get_path(conn);
-			uri_type = http_get_uri_type(uri);
+			uri_type = str_is_empty(uri) ? URI_TYPE_UNKNOWN : http_get_uri_type(uri);
 			switch (uri_type) {
 				case URI_TYPE_ASTERISK:
 					conn->req.local_uri = NULL;
@@ -2283,6 +2283,20 @@ http_t *http_connect_impl(const struct client_options *client_options,
 	u_saddr_t sa, *psa;
 	socklen_t len;
 	unsigned max_req_size =	(unsigned)atoi(http_get_default_option(MAX_REQUEST_SIZE));
+
+	/* Is `Events API` running? */
+	if (!events_is_active() || !tasks_is_active()) {
+		if (error->text != NULL) {
+			http_snprintf(NULL, /* No truncation check for ebuf */
+				error->text,
+				error->text_buffer_size,
+				"connect(%s:%d): Not able to connect, `Events API` not active!",
+				client_options->host,
+				client_options->port);
+		}
+
+		return null;
+	}
 
 	if (is_empty(client_options->host) || (client_options->port <= 0)
 		|| !is_valid_port((unsigned)client_options->port)) {

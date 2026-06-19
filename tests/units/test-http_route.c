@@ -7,17 +7,9 @@
 #   define TESTDIR "../tests/units"
 #endif
 
-void check_func(int condition, string_t cond_txt, unsigned line);
-
-static int s_total_tests = 0;
-static int s_failed_tests = 0;
-
-void check_func(int condition, string_t cond_txt, unsigned line)
-{
-	++s_total_tests;
+void check_func(int condition, string_t cond_txt, unsigned line) {
 	if (!condition) {
 		printf("Fail on line %d: [%s]"CLR_LN, line, cond_txt);
-		++s_failed_tests;
 	}
 }
 
@@ -229,6 +221,9 @@ static int request_test_handler(http_t *conn, void_t cbdata) {
 }
 
 void main_main(http_ini_t *ctx) {
+	/* deferring stop the test server */
+	defer(http_stop, ctx);
+
 	http_t *client_conn;
 	const httpi_t *ri;
 	char uri[64], ebuf[100];
@@ -877,7 +872,6 @@ void main_main(http_ini_t *ctx) {
 
 	/* Close the server */
 	g_ctx = NULL;
-	http_stop(ctx);
 }
 
 TEST(http_route) {
@@ -886,7 +880,6 @@ TEST(http_route) {
 	http_ini_t *ctx;
 	const char *HTTP_PORT = "8084,[::]:8086,8194r,[::]:8196r,8094s,[::]:8096s";
 
-	memset((void *)OPTIONS, 0, sizeof(OPTIONS));
 	OPTIONS[opt_idx++] = "listening_ports";
 	OPTIONS[opt_idx++] = HTTP_PORT;
 	OPTIONS[opt_idx++] = "authentication_domain";
@@ -895,8 +888,10 @@ TEST(http_route) {
 	OPTIONS[opt_idx++] = ".";
 	//OPTIONS[opt_idx++] = "ssl_certificate";
 	//OPTIONS[opt_idx++] = ".";
+	OPTIONS[opt_idx] = NULL;
 
-	ASSERT_TRUE(is_type(ctx = httpi_setup(2048, null, &g_ctx, server_opts(OPTIONS)), (data_types)DATA_HTTP_SERVER));
+	ASSERT_TRUE(is_type((ctx = httpi_setup(2048, null, &g_ctx, server_opts(OPTIONS), null, 0)),
+		(data_types)DATA_HTTP_SERVER));
 	g_ctx = ctx;
 	httpi_start(ctx, main_main);
 

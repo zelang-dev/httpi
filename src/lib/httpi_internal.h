@@ -377,16 +377,18 @@ struct http_ini_s {
 	/* The max request size */
 	unsigned int max_request_size;
 	unsigned int request_timeout;
-	/* The thread worker task IDs */
-	uint32_t worker_taskid;
-	string error_log_file;
-	string document_root;
+	/* The worker task IDs */
+	uint32_t taskid;
+	/* User-config error buffer size */
+	size_t error_size;
+	/* User-config error buffer */
+	string error;
 	/* What operating system is running */
 	string_t systemName;
 	/* Server start time, used for authentication */
 	time_t start_time;
 	/* User-defined data */
-	void *user_data;
+	void_t user_data;
 	/* User-defined callback function */
 	user_callbacks_t callbacks;
 	/* Array of `http_socket` listening sockets */

@@ -608,11 +608,25 @@ bool http_ini_options(http_ini_t *ctx, string_t *options) {
 	while (options && (name = *options++) != NULL) {
 		idx = http_get_option_index(name);
 		if (idx == -1) {
-			http_abort_start(ctx, "Invalid configuration option: %s", name);
+			http_abort_start(ctx, "Invalid option: %s", name);
+			if (ctx->error != NULL) {
+				http_snprintf(NULL, /* No truncation check for error buffers */
+					ctx->error,
+					ctx->error_size,
+					"Invalid configuration option: %s",
+					name);
+			}
 			return true;
 
 		} else if ((value = *options++) == NULL) {
 			http_abort_start(ctx, "%s: option value cannot be NULL", name);
+			if (ctx->error != NULL) {
+				http_snprintf(NULL, /* No truncation check for error buffers */
+					ctx->error,
+					ctx->error_size,
+					"Invalid configuration option value: %s",
+					name);
+			}
 			return true;
 		}
 
@@ -641,6 +655,13 @@ bool http_ini_options(http_ini_t *ctx, string_t *options) {
 	ireq = atoi(ctx->host.config[MAX_REQUEST_SIZE]);
 	if (ireq < 1024) {
 		http_abort_start(ctx, "%s too small", config_options[MAX_REQUEST_SIZE].name);
+		if (ctx->error != NULL) {
+			http_snprintf(NULL, /* No truncation check for error buffers */
+				ctx->error,
+				ctx->error_size,
+				"Invalid configuration option value: %s",
+				config_options[MAX_REQUEST_SIZE].name);
+		}
 		return true;
 	}
 

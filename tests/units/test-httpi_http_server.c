@@ -188,7 +188,8 @@ TEST(httpi_start) {
 	user_callbacks_t cb = http_callbacks(null, test_log_message, null, null, null, null);
 
 	/* Initialize the library */
-	ASSERT_TRUE(is_type(ctx = httpi_setup(0, &cb, null, null), (data_types)DATA_HTTP_SERVER));
+	ASSERT_TRUE(is_type((ctx = httpi_setup(0, &cb, null, null, null, 0)),
+		(data_types)DATA_HTTP_SERVER));
 
 	/* Start the server */
 	httpi_start(ctx, main_main);

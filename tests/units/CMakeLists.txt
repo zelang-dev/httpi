@@ -3,6 +3,7 @@ set(TARGETS_LIST
  test-http_auth
  test-http_connect
  test-http_download
+ test-http_error
  test-http_route
  test-http_upload
  test-http_websocket_connect

@@ -344,8 +344,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	error[0] = '\0';
 	if ((ctx == NULL) || (options == NULL)) {
 		task_erred(active_task(), EINVAL);
-		http_snprintf(
-			NULL, /* No truncation check for error buffers */
+		http_snprintf(NULL, /* No truncation check for error buffers */
 			error,
 			ERR_BUF,
 			"%s",
@@ -356,8 +355,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	if (ctx->status == HTTP_STATUS_STOPPING
 		|| ctx->status == HTTP_STATUS_TERMINATED) {
 		task_erred(active_task(), ENOEXEC);
-		http_snprintf(
-			NULL, /* No truncation check for error buffers */
+		http_snprintf(NULL, /* No truncation check for error buffers */
 			error,
 			ERR_BUF,
 			"%s",
@@ -369,8 +367,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	if (!new_dom) {
 		/* Out of memory */
 		task_erred(active_task(), ENOMEM);
-		http_snprintf(
-			NULL, /* No truncation check for error buffers */
+		http_snprintf(NULL, /* No truncation check for error buffers */
 			error,
 			ERR_BUF,
 			"%s on %d",
@@ -384,8 +381,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 		if (idx == -1) {
 			http_log(DEBUG_ERROR, null, "Invalid option: %s", name);
 			task_erred(active_task(), EINVAL);
-			http_snprintf(
-				NULL, /* No truncation check for error buffers */
+			http_snprintf(NULL, /* No truncation check for error buffers */
 				error,
 				ERR_BUF,
 				"Invalid option: %s", name);
@@ -394,8 +390,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 		} else if ((value = *options++) == NULL) {
 			http_log(DEBUG_ERROR, null, "%s: option value cannot be NULL", name);
 			task_erred(active_task(), EINVAL);
-			http_snprintf(
-				NULL, /* No truncation check for error buffers */
+			http_snprintf(NULL, /* No truncation check for error buffers */
 				error,
 				ERR_BUF,
 				"Invalid option value: %s", name);
@@ -416,8 +411,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 	if (!new_dom->config[AUTHENTICATION_DOMAIN]) {
 		http_log(DEBUG_ERROR, null, "%s", "authentication domain required");
 		task_erred(active_task(), EINVAL);
-		http_snprintf(
-			NULL, /* No truncation check for error buffers */
+		http_snprintf(NULL, /* No truncation check for error buffers */
 			error,
 			ERR_BUF,
 			"Mandatory %d option %s missing", AUTHENTICATION_DOMAIN,
@@ -453,8 +447,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 			if (!tls_config_add_keypair_file(config, domain_cert, domain_pkey)) {
 				/* Init SSL failed */
 				task_erred(active_task(), tls_config_error_code(config));
-				http_snprintf(
-					NULL, /* No truncation check for error buffers */
+				http_snprintf(NULL, /* No truncation check for error buffers */
 					error,
 					ERR_BUF,
 					"%s: %s",
@@ -479,8 +472,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 				"domain %s already in use",
 				new_dom->config[AUTHENTICATION_DOMAIN]);
 			task_erred(active_task(), EINVAL);
-			http_snprintf(
-				NULL, /* No truncation check for error buffers */
+			http_snprintf(NULL, /* No truncation check for error buffers */
 				error,
 				ERR_BUF,
 				"Domain %s specified by %s is already in use",
@@ -507,7 +499,7 @@ int http_add_domain(http_ini_t *ctx, string_t *options) {
 }
 
 http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,
-	void_t user_data, const options_ini_t **options) {
+	void_t user_data, const options_ini_t **options, string err, size_t err_len) {
 	uint64_t nonce = 0;
 	int i;
 
@@ -521,6 +513,8 @@ http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,
 	if (is_empty(ctx))
 		return nullptr;
 
+	ctx->error = err;
+	ctx->error_size = err_len;
 	ctx->server_sockets = array();
 	if (is_empty(ctx->server_sockets)) {
 		free(ctx);
@@ -547,19 +541,55 @@ http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,
 	/*
 	 * NOTE(lsm): order is important here. SSL certificates must
 	 * be initialized before listening ports. UID must be set last. */
-	if (!http_set_gpass_option(ctx))
-		return http_abort_start(ctx, "Error setting gpass option");
+	if (!http_set_gpass_option(ctx)) {
+		string_t err_msg = "Invalid global password file";
+		if (ctx->error != NULL) {
+			http_snprintf(NULL, /* No truncation check for error buffers */
+				ctx->error,
+				ctx->error_size,
+				"%s",
+				err_msg);
+		}
+		return http_abort_start(ctx, err_msg);
+	}
 
-	if (!http_set_ports_option(ctx))
-		return http_abort_start(ctx, "Error setting ports option");
+	if (!http_set_ports_option(ctx)) {
+		string_t err_msg = "Failed to setup server ports";
+		if (ctx->error != NULL) {
+			http_snprintf(NULL, /* No truncation check for error buffers */
+				ctx->error,
+				ctx->error_size,
+				"%s",
+				err_msg);
+		}
+		return http_abort_start(ctx, err_msg);
+	}
 
 #if !defined(_WIN32) && !defined(__ZEPHYR__)
-	if (!http_set_uid_option(ctx))
-		return http_abort_start(ctx, "Error setting UID option");
+	if (!http_set_uid_option(ctx)) {
+		string_t err_msg = "Failed to run as configured user";
+		if (ctx->error != NULL) {
+			http_snprintf(NULL, /* No truncation check for error buffers */
+				ctx->error,
+				ctx->error_size,
+				"%s",
+				err_msg);
+		}
+		return http_abort_start(ctx, err_msg);
+	}
 #endif
 
-	if (!http_set_acl_option(ctx))
-		return http_abort_start(ctx, "Error setting ACL option");
+	if (!http_set_acl_option(ctx)) {
+		string_t err_msg = "Failed to setup access control list";
+		if (ctx->error != NULL) {
+			http_snprintf(NULL, /* No truncation check for error buffers */
+				ctx->error,
+				ctx->error_size,
+				"%s",
+				err_msg);
+		}
+		return http_abort_start(ctx, err_msg);
+	}
 
 	if (!is_empty(callbacks)) {
 		ctx->callbacks = *callbacks;

@@ -97,6 +97,7 @@ TEST(error_log_file) {
 	http_ini_t *ctx;
 	const char *OPTIONS[32];
 	int opt_cnt = 0, result = 0;
+	char err_buf[256];
 
 	/* Set options and start server */
 	OPTIONS[opt_cnt++] = "listening_ports";
@@ -109,7 +110,7 @@ TEST(error_log_file) {
 	OPTIONS[opt_cnt++] = ".";
 	OPTIONS[opt_cnt] = NULL;
 
-	ASSERT_TRUE(is_type(ctx = httpi_setup(0, NULL, NULL, server_opts(OPTIONS)), (data_types)DATA_HTTP_SERVER));
+	ASSERT_TRUE(is_type(ctx = httpi_setup(0, NULL, NULL, server_opts(OPTIONS), err_buf, sizeof(err_buf)), (data_types)DATA_HTTP_SERVER));
 	httpi_start(ctx, main_main);
 
 	/* File content check var */
@@ -151,7 +152,7 @@ TEST(error_log_file) {
 	ASSERT(str_is(OPTIONS[0], "listening_ports"));
 	OPTIONS[1] = "bad !"; /* no r or s in string */
 
-	ctx = httpi_setup(0, NULL, 0, server_opts(OPTIONS));
+	ctx = httpi_setup(0, NULL, 0, server_opts(OPTIONS), buf, sizeof(buf));
 	ASSERT_MSG(
 		ctx == NULL,
 		"Should not be able to start server with bad port configuration");

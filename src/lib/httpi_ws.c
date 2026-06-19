@@ -780,9 +780,9 @@ static void websocket_client_thread(opaque_t data) {
 
 	if (is_type(conn, (data_types)DATA_HTTPINFO)) {
 		ctx->status = HTTP_STATUS_RUNNING;
-		ctx->worker_taskid = task_id();
+		ctx->taskid = task_id();
 		conn->ws.type = (data_types)DATA_WS_CLIENT;
-		task_name("Websocket client #%d", ctx->worker_taskid);
+		task_name("Websocket client #%d", ctx->taskid);
 		http_read_websocket(conn, conn->ws.data_handler, conn->ws.callback_data);
 		debug_info("%s", "Websocket client exited"CLR_LN);
 	}
