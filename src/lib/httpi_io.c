@@ -1912,7 +1912,7 @@ int64_t http_store_body(http_ini_t *ctx, http_t *conn, string_t path) {
 		return 0;
 	}
 
-	if (http_fopen(ctx, (const http_t *)conn, path, "w", &fi) == 0)
+	if (http_fopen(ctx, (const http_t *)conn, path, "wb", &fi) == 0)
 		return -12;
 
 	ret = http_read(conn, buf, sizeof(buf));
@@ -1924,6 +1924,7 @@ int64_t http_store_body(http_ini_t *ctx, http_t *conn, string_t path) {
 			return -13;
 		}
 
+		len += ret;
 		ret = http_read(conn, buf, sizeof(buf));
 	}
 
