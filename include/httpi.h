@@ -546,6 +546,7 @@ C_API http_t *http_websocket_connect_secure_extensions(struct client_options *cl
 C_API void http_user_data_set(const http_t *const_conn, void_t data);
 C_API void_t http_user_data(const http_t *conn);
 C_API httpi_t *http_request_info(const http_t *conn);
+C_API string_t http_remote_addr(const httpi_t *req);
 
 /* The main `setup` entry point for the `HttPi` server. */
 C_API http_ini_t *httpi_setup(int max_fd, user_callbacks_t *callbacks,

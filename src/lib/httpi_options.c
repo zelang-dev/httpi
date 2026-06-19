@@ -1704,6 +1704,14 @@ FORCEINLINE httpi_t *http_request_info(const http_t *conn) {
 	return NULL;
 }
 
+FORCEINLINE string_t http_remote_addr(const httpi_t *req) {
+	if (req != NULL) {
+		return (string_t)req->remote_addr;
+	}
+
+	return "";
+}
+
 FORCEINLINE http_ini_t *httpi_context(http_t *conn) {
 	return (conn == NULL) ? (http_ini_t *)NULL : (conn->ctx);
 }
