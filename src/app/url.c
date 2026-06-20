@@ -154,7 +154,7 @@ static void die(string_t fmt, ...) {
 #if defined(_WIN32)
 	MessageBox(NULL, msg, "Error", MB_ICONERROR | MB_OK);
 #else
-	cerr("%s\n", msg);
+	cerr("%s"CLR_LN, msg);
 #endif
 
 	exit(EXIT_FAILURE);
@@ -172,7 +172,7 @@ static void warn(string_t fmt, ...) {
 #if defined(_WIN32)
 	MessageBox(NULL, msg, "Warning", MB_OK);
 #else
-	cerr("%s\n", msg);
+	cerr("%s"CLR_LN, msg);
 #endif
 }
 
@@ -189,7 +189,7 @@ static void show_server_name(void) {
 #if defined(WIN32)
 	(void)MakeConsole();
 #endif
-	cerr("HttPi v%s, built on %s\n", httpi_version(), bd);
+	cerr("HttPi v%s, built on %s"CLR_LN, httpi_version(), bd);
 }
 
 static void show_usage_and_exit(string_t exeName) {
@@ -201,7 +201,7 @@ static void show_usage_and_exit(string_t exeName) {
 	}
 
 	show_server_name();
-	cerr("\nUsage:\n");
+	cerr("\nUsage:"CLR_LN);
 	cerr("  Start server with a set of options:\n");
 	cerr("    %s [config_file]\n", exeName);
 	cerr("    %s [-option value ...]\n", exeName);
@@ -238,9 +238,9 @@ static void show_usage_and_exit(string_t exeName) {
 
 #if defined(_WIN32) || defined(USE_COCOA) || defined(MAIN_C_UNIT_TEST)
 static string_t config_file_top_comment =
-"# HttPi web server configuration file.\n"
+"# Httpi web server configuration file.\n"
 "# For detailed description of every option, visit\n"
-"# https://github.com/zelang-dev/c-events/blob/main/docs/UserManual.md\n"
+"# https://github.com/zelang-dev/httpi/blob/main/docs/UserManual.md\n"
 "# Lines starting with '#' and empty lines are ignored.\n"
 "# To make changes, remove leading '#', modify option values,\n"
 "# save this file and then restart HttPi.\n\n";
@@ -564,7 +564,7 @@ static int read_config_file(string_t config_file, string_t *options) {
 		/* Set option */
 		if (!set_option(options, p + i, p + j)) {
 			cerr(
-				"%s: line %d is invalid, ignoring it:\n %s",
+				"%s: line %d is invalid, ignoring it:\n %s"CLR_LN,
 				config_file,
 				(int)line_no,
 				p);
@@ -776,7 +776,7 @@ static int run_quickjs_ng(string_t file_name) {
 		qjs_exec_script(ctx, file_name);
 		return 1;
 	} else {
-		cerr("Failed to create a HttPi `QuickJS-NG` heap.\n");
+		cerr("Failed to create a HttPi `QuickJS-NG` heap."CLR_LN);
 		return 1;
 	}
 }
@@ -785,7 +785,7 @@ static int run_client(string_t url_arg) {
 	/* connection data */
 	uri_t *uri = parse_uri(url_arg);
 	if (is_empty(uri)) {
-		cerr("Invalid host\n");
+		cerr("Invalid host"CLR_LN);
 		return 0;
 	}
 
@@ -809,7 +809,7 @@ static int run_client(string_t url_arg) {
 	} else if (uri->type == DATA_TLS) {
 		is_ssl = 1;
 	} else {
-		cerr("URL must start with http:// or https://\n");
+		cerr("URL must start with http:// or https://"CLR_LN);
 		return 0;
 	}
 
@@ -911,7 +911,7 @@ static void show_settings_dialog(void);
 #endif
 
 static void start_httpi(int argc, char *argv[]) {
-	struct http_clb_s callbacks;
+	user_callbacks_t callbacks;
 	string_t options[2 * MAX_OPTIONS + 1];
 	struct init_data init;
 	struct error_data error;
@@ -925,7 +925,7 @@ static void start_httpi(int argc, char *argv[]) {
 #if defined(WIN32)
 		(void)MakeConsole();
 #endif
-		cout("\n%s (%s)\n%s\n", g_server_base_name,	g_server_name, g_system_info);
+		cout("\n%s (%s)\n%s"CLR_LN, g_server_base_name,	g_server_name, g_system_info);
 		exit(EXIT_SUCCESS);
 	}
 
@@ -977,7 +977,7 @@ static void start_httpi(int argc, char *argv[]) {
 	}
 
 	/* Initialize options structure */
-	memset((void *)options, 0, sizeof(options));
+	memset((void_t)options, 0, sizeof(options));
 	set_option(options, "document_root", ".");
 
 	/* Update config based on command line arguments */
@@ -1021,12 +1021,10 @@ static void start_httpi(int argc, char *argv[]) {
 	init.configuration_options = options;
 	init.user_data = &g_user_data;
 
-	memset(&error, 0, sizeof(error));
-	error.text = error_text;
-	error.text_buffer_size = sizeof(error_text);
-
+	memset((void_t)error_text, 0, sizeof(error));
 	/* Start `url` */
-	g_ctx = httpi_setup(0, &callbacks, &g_user_data, (const options_ini_t **)options);
+	g_ctx = httpi_setup(0, &callbacks, &g_user_data, server_opts(options),
+		error_text, sizeof(error_text));
 
 	/* httpi_setup copies all options to an internal buffer.
 	 * The options data field here is not required anymore. */
@@ -1082,9 +1080,9 @@ static void start_httpi(int argc, char *argv[]) {
 
 		j = http_add_domain(g_ctx, (string_t *)options);
 		if (j < 0) {
-			die("Error loading domain file %s: %i", g_add_domain[i], j);
+			die("Error loading domain file %s: %i"CLR_LN, g_add_domain[i], j);
 		} else {
-			cout("Domain file %s loaded\n", g_add_domain[i]);
+			cout("Domain file %s loaded"CLR_LN, g_add_domain[i]);
 		}
 
 		for (j = 0; options[j] != NULL; j++) {
@@ -2864,7 +2862,7 @@ int main(int argc, char *argv[]) {
 	init_server_name();
 	init_system_info();
 	start_httpi(argc, argv);
-	cout("%s started on port(s) %s with web root [%s]\n", g_server_name,
+	cout("%s started on port(s) %s with web root [%s]"CLR_LN, g_server_name,
 		http_get_option(g_ctx, "listening_ports"),
 		http_get_option(g_ctx, "document_root"));
 
@@ -2874,7 +2872,7 @@ int main(int argc, char *argv[]) {
 
 	cout("Exiting on signal %d, waiting for all threads to finish...", g_exit_flag);
 	stop_httpi();
-	cout("%s", " done.\n");
+	cout("%s", " done."CLR_LN);
 
 	free_system_info();
 
