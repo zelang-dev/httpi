@@ -1232,11 +1232,11 @@ int should_keep_alive(http_t *conn) {
 	if (conn != NULL) {
 		string_t http_version = conn->req.http_version;
 		string_t header = http_get_header(conn, "Connection");
-		if (conn->req.must_close || conn->code == 401 ||
-			!str_is_case(conn->ctx->host.config[ENABLE_KEEP_ALIVE], "yes") ||
-			(header != NULL && !str_is_case(header, "keep-alive") != 0) ||
-			(header == NULL && http_version &&
-				0 != strcmp(http_version, "1.1"))) {
+		if (conn->req.must_close
+			|| conn->code >= 400
+			|| !str_is_case(conn->ctx->host.config[ENABLE_KEEP_ALIVE], "yes")
+			|| (header != NULL && !str_is_case(header, "keep-alive") != 0)
+			|| (http_version && 0 != strcmp(http_version, "1.1"))) {
 			return 0;
 		}
 

@@ -4,6 +4,7 @@ set(TARGETS_LIST
  test-http_connect
  test-http_download
  test-http_error
+ test-http_keep_alive
  test-http_large_request
  test-http_route
  test-http_upload

@@ -185,7 +185,7 @@ TEST(list) {
 	int result = 0;
 
 	/* print headline */
-	cout("HttPi %s throttle test\n\n", httpi_version());
+	cout("HttPi %s limit speed `throttle` test\n\n", httpi_version());
 
 	/* start stop server */
 	EXEC_TEST(throttle);

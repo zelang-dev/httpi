@@ -121,10 +121,15 @@ int http_response_multi(http_t *conn, string_t additional_headers) {
 }
 
 int http_response_send(http_t *conn) {
+	int has_date = 0, has_connection = 0;
+	hash_pair_t *pair = null;
+	u32 i, counter = 0, capacity = 0, count = 0;
+
 	if (conn == NULL) {
 		/* Parameter error */
 		return -1;
 	}
+
 	if ((conn->action != HTTP_REQUEST)
 	    || (conn->req.proto == PROTOCOL_WEBSOCKET)) {
 		/* Only allowed in server context */
@@ -137,6 +142,49 @@ int http_response_send(http_t *conn) {
 
 	/* State: 2 */
 	conn->req.state = 2;
+
+	if (conn->req.proto == PROTOCOL_HTTP2) {
+		//int ret = http2_send_response_headers(conn);
+		//free_buffered_response_header_list(conn);
+		//return (ret ? 0 : -4);
+	}
+
+	/* Send
+	if (!send_http1_response_status_line(conn)) {
+		//free_buffered_response_header_list(conn);
+		return -4;
+	}; */
+
+	capacity = (u32)hash_capacity(conn->headers), count = hash_count(conn->headers);
+	for (i = 0; i < capacity; i++) {
+		pair = (hash_pair_t *)hash_buckets(conn->headers, i);
+		if (!hash_pair_is_null(pair)) {
+			string key = (string)hash_pair_key(pair);
+			string value = hash_pair_value(pair).char_ptr;
+			//http_response_add(conn, word_toupper(key, '-'), value, strlen(value));
+			/* Check for some special headers */
+			if (str_is_case(key, "Date"))
+				has_date = 1;
+			else if (str_is_case(key, "Connection"))
+				has_connection = 1;
+			else
+				http_printf(conn, "%s: %s\r\n", word_toupper(key, '-'), value);
+
+			if (++counter == count)
+				break;
+		}
+	}
+
+	if (has_date) {
+		time_t curtime = time(NULL);
+		char date[64];
+		http_gmt_time_str(date, sizeof(date), &curtime);
+		http_printf(conn, "Date: %s\r\n", date);
+	}
+
+	if (has_connection) {
+		http_printf(conn, "Connection: %s\r\n", http_suggest_connection_header(conn));
+	}
 
 	http_write(conn, "\r\n", 2);
 	conn->req.state = 3;
