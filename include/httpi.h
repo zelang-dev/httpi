@@ -100,6 +100,9 @@ typedef void (*http_main_cb)(http_ini_t *);
  * return code is stored as a HTTP status code for the access log. */
 typedef int(*request_cb)(http_t *conn);
 
+/* Called when `httpi` has finished processing request. */
+typedef void(*request_done_cb)(http_t *, int reply_status_code);
+
 /* Called when `HttPi` is about to log a message. If callback returns
  * non-zero, `HttPi` does not log anything. */
 typedef int (*log_msg_cb)(const http_t *conn, string_t message);
@@ -145,6 +148,7 @@ typedef void(*upload_form_cb)(http_t *, string_t file_name);
 typedef struct user_callbacks_s {
 	/* handle everything callback*/
 	request_cb handler;
+	request_done_cb handler_done;
 	log_msg_cb log_message;
 	log_access_cb log_access;
 	file_open_cb open_file;

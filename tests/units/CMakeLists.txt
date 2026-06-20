@@ -8,6 +8,7 @@ set(TARGETS_LIST
  test-http_route
  test-http_upload
  test-http_store_body
+ test-http_throttle
  test-http_websocket_connect
  test-httpi_http_server
  test-httpi_https_server

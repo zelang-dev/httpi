@@ -1,13 +1,8 @@
 #include "../test_assert.h"
 
-static int s_total_tests = 0;
-static int s_failed_tests = 0;
-
 void check_func(int condition, string_t cond_txt, unsigned line) {
-	++s_total_tests;
 	if (!condition) {
 		printf("Fail on line %d: [%s]"CLR_LN, line, cond_txt);
-		++s_failed_tests;
 	}
 }
 
@@ -17,13 +12,13 @@ void check_func(int condition, string_t cond_txt, unsigned line) {
 	} while (0)
 
 const char *lastMessage;
-static int log_msg_func(http_t *conn, const char *message) {
+static int log_msg_func(const http_t *conn, const char *message) {
 	http_ini_t *ctx;
 	char *ud;
 
-	ck_assert(conn != NULL);
-	ctx = httpi_context(conn);
-	ck_assert(ctx != NULL);
+	ASSERT(conn != NULL);
+	ctx = httpi_context((http_t *)conn);
+	ASSERT(ctx != NULL);
 	ud = (char *)httpi_user_data(ctx);
 
 	strncpy(ud, message, 255);
@@ -44,136 +39,98 @@ static int test_log_message(http_t *conn, const char *message) {
 	return 0; /* Return 0 means "not yet handled" */
 }
 
-void main_main(http_ini_t *ctx) {
-	use_ca_certificate("cert.pem");
-	tls_selfserver_set();
-}
-
-static int test_throttle_begin_request(struct mg_connection *conn) {
-	const struct mg_request_info *ri;
+static int test_throttle_begin_request(http_t *conn) {
+	const httpi_t *ri;
 	long unsigned len = 1024 * 10;
 	const char *block = "0123456789";
 	unsigned long i, blocklen;
 
-	ck_assert(conn != NULL);
-	ri = mg_get_request_info(conn);
-	ck_assert(ri != NULL);
+	ASSERT(conn != NULL);
+	ri = http_request_info(conn);
+	ASSERT(ri != NULL);
 
-	ck_assert_str_eq(ri->request_method, "GET");
-	ck_assert_str_eq(ri->request_uri, "/throttle");
-	ck_assert_str_eq(ri->local_uri, "/throttle");
-	ck_assert_str_eq(ri->http_version, "1.0");
-	ck_assert_str_eq(ri->query_string, "q");
-	ck_assert_str_eq(ri->remote_addr, "127.0.0.1");
+	ASSERT(str_is(http_get_method(conn), "GET"));
+	ASSERT(str_is(http_get_path(conn), "/throttle"));
+	ASSERT(str_is(http_get_uri(conn), "/throttle"));
+	ASSERT(str_is(http_version(conn), "1.0"));
+	ASSERT(str_is(http_get_query(conn), "q"));
+	ASSERT(str_is(http_remote_addr(ri), "127.0.0.1"));
 
-	mg_printf(conn,
+	http_printf(conn,
 		"HTTP/1.1 200 OK\r\n"
 		"Content-Length: %lu\r\n"
 		"Connection: close\r\n\r\n",
 		len);
 
 	blocklen = (unsigned long)strlen(block);
-
 	for (i = 0; i < len; i += blocklen) {
-		mg_write(conn, block, blocklen);
+		http_write(conn, block, blocklen);
 	}
-
-	mark_point();
 
 	return 987; /* Not a valid HTTP response code,
 				 * but it should be written to the log and passed to
 				 * end_request. */
 }
 
+static void test_throttle_end_request(http_t *conn, int reply_status_code) {
+	const httpi_t *ri;
 
-static void
-test_throttle_end_request(const struct mg_connection *conn,
-	int reply_status_code) {
-	const struct mg_request_info *ri;
+	ASSERT(conn != NULL);
+	ri = http_request_info(conn);
+	ASSERT(ri != NULL);
 
-	ck_assert(conn != NULL);
-	ri = mg_get_request_info(conn);
-	ck_assert(ri != NULL);
+	ASSERT(str_is(http_get_method(conn), "GET"));
+	ASSERT(str_is(http_get_path(conn), "/throttle"));
+	ASSERT(str_is(http_get_uri(conn), "/throttle"));
+	ASSERT(str_is(http_version(conn), "1.0"));
+	ASSERT(str_is(http_get_query(conn), "q"));
+	ASSERT(str_is(http_remote_addr(ri), "127.0.0.1"));
 
-	ck_assert_str_eq(ri->request_method, "GET");
-	ck_assert_str_eq(ri->request_uri, "/throttle");
-	ck_assert_str_eq(ri->local_uri, "/throttle");
-	ck_assert_str_eq(ri->http_version, "1.0");
-	ck_assert_str_eq(ri->query_string, "q");
-	ck_assert_str_eq(ri->remote_addr, "127.0.0.1");
-
-	ck_assert_int_eq(reply_status_code, 987);
+	ASSERT(reply_status_code == 987);
 }
 
-
-TEST(throttle) {
-	/* Server var */
-	struct mg_context *ctx;
-	struct mg_callbacks callbacks;
-	const char *OPTIONS[32];
-	int opt_cnt = 0;
+void main_main(http_ini_t *ctx) {
+	/* deferring stop the test server */
+	defer(http_stop, ctx);
 
 	/* Client var */
-	struct mg_connection *client;
-	char client_err_buf[256];
+	http_t *client;
+	char *client_err_buf = task_erred_str();
 	char client_data_buf[256];
-	const struct mg_response_info *client_ri;
+	const httpi_t *client_ri;
 
 	/* timing test */
 	int r, data_read;
 	time_t t0, t1;
 	double dt;
 
-	mark_point();
-
-
-/* Set options and start server */
-#if !defined(NO_FILES)
-	OPTIONS[opt_cnt++] = "document_root";
-	OPTIONS[opt_cnt++] = ".";
-#endif
-	OPTIONS[opt_cnt++] = "listening_ports";
-	OPTIONS[opt_cnt++] = "8080";
-	OPTIONS[opt_cnt++] = "throttle";
-	OPTIONS[opt_cnt++] = "*=1k";
-	OPTIONS[opt_cnt] = NULL;
-
-	memset(&callbacks, 0, sizeof(callbacks));
-	callbacks.begin_request = test_throttle_begin_request;
-	callbacks.end_request = test_throttle_end_request;
-
-	ctx = test_mg_start(&callbacks, 0, OPTIONS, __LINE__);
-	ck_assert(ctx != NULL);
-
 	/* connect client */
-	memset(client_err_buf, 0, sizeof(client_err_buf));
+	memset(client_err_buf, 0, ERR_BUF);
 	memset(client_data_buf, 0, sizeof(client_data_buf));
 
 	strcpy(client_err_buf, "reset-content");
-	client = mg_download("127.0.0.1",
+	client = http_download("127.0.0.1",
 		8080,
 		0,
-		client_err_buf,
-		sizeof(client_err_buf),
 		"GET /throttle?q HTTP/1.0\r\n\r\n");
 
-	ck_assert(ctx != NULL);
-	ck_assert_str_eq(client_err_buf, "");
+	ASSERT(ctx != NULL);
+	ASSERT(str_is(client_err_buf, ""));
 
-	client_ri = mg_get_response_info(client);
+	client_ri = http_request_info(client);
 
-	ck_assert(client_ri != NULL);
-	ck_assert_int_eq(client_ri->status_code, 200);
-
-	ck_assert_int_eq(client_ri->content_length, 1024 * 10);
+	ASSERT(client_ri != NULL);
+	ASSERT_EQ_ABORT(http_get_code(client), 200);
+	ASSERT_EQ_ABORT(http_get_length(client), (1024 * 10));
 
 	data_read = 0;
 	t0 = time(NULL);
-	while (data_read < client_ri->content_length) {
-		r = mg_read(client, client_data_buf, sizeof(client_data_buf));
-		ck_assert_int_ge(r, 0);
+	while (data_read < http_get_length(client)) {
+		r = http_read(client, client_data_buf, sizeof(client_data_buf));
+		ASSERT(r >= 0);
 		data_read += r;
 	}
+
 	t1 = time(NULL);
 	dt = difftime(t1, t0) * 1000.0; /* Elapsed time in ms - in most systems
 									 * only with second resolution */
@@ -188,19 +145,40 @@ TEST(throttle) {
 	 * 8 seconds. */
 
 	/* Check if there are at least 8 seconds */
-	ck_assert_int_ge((int)dt, 8 * 1000);
+	ASSERT((int)dt >= (8 * 1000));
 
 	/* Nothing left to read */
-	r = mg_read(client, client_data_buf, sizeof(client_data_buf));
-	ck_assert_int_eq(r, 0);
+	r = http_read(client, client_data_buf, sizeof(client_data_buf));
+	ASSERT(r == 0);
 
 	/* Close the client connection */
-	mg_close_connection(client);
+	http_close_connection(client);
+}
 
-	/* Stop the server */
-	test_mg_stop(ctx, __LINE__);
+TEST(throttle) {
+	/* Server var */
+	http_ini_t *ctx;
+	user_callbacks_t callbacks;
+	const char *OPTIONS[32];
+	int opt_cnt = 0;
 
-	mark_point();
+	/* Set options and start server */
+	OPTIONS[opt_cnt++] = "document_root";
+	OPTIONS[opt_cnt++] = ".";
+	OPTIONS[opt_cnt++] = "listening_ports";
+	OPTIONS[opt_cnt++] = "8080";
+	OPTIONS[opt_cnt++] = "throttle";
+	OPTIONS[opt_cnt++] = "*=1k";
+	OPTIONS[opt_cnt] = NULL;
+
+	memset(&callbacks, 0, sizeof(callbacks));
+	callbacks.handler = test_throttle_begin_request;
+	callbacks.handler_done = test_throttle_end_request;
+	ASSERT_TRUE(is_type((ctx = httpi_setup(0, &callbacks, null, server_opts(OPTIONS),
+		null, 0)), (data_types)DATA_HTTP_SERVER));
+	httpi_start(ctx, main_main);
+
+	return 0;
 }
 
 TEST(list) {

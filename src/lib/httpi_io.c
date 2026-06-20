@@ -1027,7 +1027,7 @@ FORCEINLINE int64_t _write_all(http_t *conn, string buf, int64_t len) {
 }
 
 int http_write(http_t *conn, const_t buf, size_t len) {
-	int n = 0, allowed = 0, total = 0;
+	int n = 0, allowed = 0, total = 0, throttled;
 	time_t now = 0;
 	if (conn == NULL) {
 		return 0;
@@ -1050,22 +1050,30 @@ int http_write(http_t *conn, const_t buf, size_t len) {
 		}
 
 		allowed = conn->req.throttle - conn->req.last_throttle_bytes;
-		if (allowed > (int64_t)len) {
-			allowed = (int64_t)len;
+		if (allowed > (int)len) {
+			allowed = (int)len;
 		}
 
-		if ((total = _write_all(conn, (string)buf, (int64_t)allowed)) == allowed) {
+		total = _write_all(conn, (string)buf, (int64_t)allowed);
+		if (total == allowed) {
 			buf = (string)buf + total;
 			conn->req.last_throttle_bytes += total;
-			while (total < (int64_t)len && conn->ctx->status == HTTP_STATUS_RUNNING) {
-				allowed = (conn->req.throttle > ((int64_t)len - total))
-					? (int64_t)len - total
+			while (total < (int)len && conn->ctx->status == HTTP_STATUS_RUNNING) {
+				allowed = (conn->req.throttle > ((int)len - total))
+					? (int)len - total
 					: conn->req.throttle;
-				if ((n = _write_all(conn, (string)buf, (int64_t)allowed)) != allowed) {
+
+				n = _write_all(conn, (string)buf, (int64_t)allowed);
+				if (n != allowed) {
 					break;
 				}
 
-				delay(1000);
+				throttled = 2000;
+				while (throttled) {
+					yield();
+					throttled--;
+				};
+
 				conn->req.last_throttle_bytes = allowed;
 				conn->req.last_throttle_time = time(NULL);
 				buf = (string)buf + n;
@@ -2213,6 +2221,10 @@ void http_process_connection(http_ini_t *ctx, http_t *conn) {
 				/* handle request to local server */
 				http_handle_request(conn);
 				debug_info("%s", "handle_request done"CLR_LN);
+				if (conn->ctx->callbacks.handler_done != NULL) {
+					conn->ctx->callbacks.handler_done(conn, conn->status);
+					debug_info("%s", "handle_request_done callback done"CLR_LN);
+				}
 				http_log_access(conn);
 			} else {
 				/* TODO: handle non-local request (PROXY) */
