@@ -48,7 +48,7 @@
 #endif
 
 #if !defined(DEBUG_ASSERT)
-#if defined(DEBUG)
+#if defined(USE_DEBUG)
 
 #if defined(_MSC_VER)
 /* DEBUG_ASSERT has some const conditions */
@@ -58,14 +58,14 @@
 #define DEBUG_ASSERT(cond)                                                     \
 	do {                                                                       \
 		if (!(cond)) {                                                         \
-			cerr("ASSERTION FAILED: %s", #cond);							   \
+			cerr("ASSERTION FAILED: %s"CLR_LN, #cond);						   \
 			exit(2); /* Exit with error */                                     \
 		}                                                                      \
 	} while (0)
 
 #else
 #define DEBUG_ASSERT(cond)
-#endif /* DEBUG */
+#endif /* USE_DEBUG */
 #endif
 
 #define MAX_OPTIONS (100) /* TODO: Read from library? */
@@ -2684,7 +2684,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdline, int show) {
 	HWND hWnd;
 	MSG msg;
 
-#if defined(DEBUG)
+#if defined(USE_DEBUG)
 	(void)MakeConsole();
 #endif
 

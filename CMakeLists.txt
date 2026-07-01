@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.14...5.1.0)
+cmake_minimum_required (VERSION 3.22...5.1.0)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
     cmake_policy(SET CMP0135 NEW)
@@ -158,19 +158,33 @@ if (BUILD_HTTPI_APP)
 		set_source_files_properties(${URL_RES} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     	add_executable(${SUB_PROJECT_APP} MACOSX_BUNDLE ${CMAKE_CURRENT_SOURCE_DIR}/src/app/url.c ${URL_RES})
 		find_library(COCOA_LIBRARY Cocoa required)
-		target_link_libraries(${SUB_PROJECT_APP} ${SUB_PROJECT} ${COCOA_LIBRARY})
+		add_library(gui ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c)
+		target_link_libraries(gui ${COCOA_LIBRARY} gui)
+		target_link_libraries(${SUB_PROJECT_APP} ${SUB_PROJECT} gui)
 		set(CPACK_BUNDLE_NAME "Url")
 		set(CPACK_BUNDLE_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/resources/info.plist)
 		set(CPACK_BUNDLE_ICON ${CMAKE_CURRENT_SOURCE_DIR}/resources/url_64x64.png)
 	else()
 		if(WIN32)
+			add_library(gui ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c)
+    		target_link_libraries(gui gdi32)
         	add_executable(${SUB_PROJECT_APP} ${CMAKE_CURRENT_SOURCE_DIR}/src/app/url.c
 				${CMAKE_CURRENT_SOURCE_DIR}/resources/res.rc)
 		else()
+			find_package(X11 REQUIRED COMPONENTS Xmu Xt)
+			find_library(X11_Xaw_LIB Xaw)
+			find_package(OpenGL REQUIRED COMPONENTS GLX)
+			add_library(gui
+				${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c
+				${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/TextField.c
+				${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/FileSelect.c
+				${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/Gridbox.c)
+    		target_link_libraries(gui Xaw X11::Xmu X11::Xt X11::X11 OpenGL::GL OpenGL::GLU)
     		add_executable(${SUB_PROJECT_APP} ${CMAKE_CURRENT_SOURCE_DIR}/src/app/url.c)
 		endif()
-    	target_link_libraries(${SUB_PROJECT_APP} ${SUB_PROJECT})
     endif()
+    target_include_directories(gui PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+    target_link_libraries(${SUB_PROJECT_APP} ${SUB_PROJECT} gui)
 
     target_include_directories(
         ${SUB_PROJECT_APP} PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
