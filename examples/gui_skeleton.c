@@ -80,7 +80,7 @@ void motionCB(Widget w, XtPointer client, XtPointer call_data) {
 		ret->doit = False;
 }
 
-void form_prompt(actionbar_t *formfield, void *data) {
+void form_prompt(ui_t *formfield, void *data) {
 	char *text = "Free alternative to the Motif XmTextField";
 	Widget form = XtVaCreateManagedWidget("box", boxWidgetClass, formfield->wnd, 0);
 	Widget t1 = XtVaCreateManagedWidget("variablewidth", textfieldWidgetClass, form,
@@ -135,13 +135,13 @@ void form_prompt(actionbar_t *formfield, void *data) {
 	formfield->app_data = (void *)form;
 	formfield->name = "Form Fill";
 	gui_active(formfield);
-	XtDestroyWidget(form);
+	gui_destroy(formfield);
 }
 
 #endif
 
-#define W 320
-#define H 240
+#define W 400
+#define H 400
 
 static void fenster_rect(gui_info *f, int x, int y, int w, int h,
 	uint32_t c) {
@@ -184,7 +184,7 @@ static void fenster_text(gui_info *f, int x, int y, char *s, int scale,
  *
  * This demo prints currently pressed keys with modifiers.
  * ============================================================ */
-void key_box(actionbar_t *app, void *data) {
+void key_box(ui_t *app, void *data) {
 	uint32_t buf[W * H] = {0};
 	gui_info f = {0};
 	gui_window(&f, "Press any key...", W, H, buf);
@@ -235,17 +235,17 @@ void key_box(actionbar_t *app, void *data) {
  * - Sleeps if needed to maintain a frame rate of 60 FPS
  * - Closes a window
  * ============================================================ */
-void color_box(actionbar_t *app, void *data) {
+void color_box(ui_t *app, void *data) {
 	int i, j;
-	uint32_t buf[W * H];
+	uint32_t buf[W * H] = {0};
 	gui_info f = {0};
 	gui_window(&f, "hello", W, H, buf);
 	uint32_t t = 0;
 	int64_t now = gui_time();
 	while (gui_loop(&f) == 0) {
 		t++;
-		for (i = 0; i < 320; i++) {
-			for (j = 0; j < 240; j++) {
+		for (i = 0; i < W; i++) {
+			for (j = 0; j < H; j++) {
 			  /* White noise: */
 				//gui_pixel(&f, i, j) = (rand() << 16) ^ (rand() << 8) ^ rand();
 
@@ -268,46 +268,73 @@ void color_box(actionbar_t *app, void *data) {
 	gui_close(&f);
 }
 
-void message_box(actionbar_t *app, void *data) {
-	Button buttons[3];
+#define IDC_FIELD1	10
+#define IDC_FIELD2 	20
+#define IDC_FIELD3	30
+#define IDC_FIELD4	40
+
+void form_prompt(ui_t *formfield, void *data) {
+	gui_info ui = {0};
+	ui_field form[] = {
+			{IDC_FIELD1, "name:", "Free alternative to the Motif XmTextField", 290, 40},
+			{IDC_FIELD2, NULL, "Fixed Length", 130, 11},
+			{IDC_FIELD3, NULL, "No Echo", 90, 6},
+			{IDC_FIELD4, NULL, "No Pending Delete", 160, 16},
+	};
+
+	gui_form(&ui, formfield, "Form Fill", form, 4, data);
+	gui_active(formfield);
+	gui_destroy(formfield);
+}
+
+void message_box(ui_t *app, void *data) {
+	ui_button buttons = {0};
 	char lang_bt_eng[] = "English";
+
 	buttons[0].label = lang_bt_eng;
-
 	buttons[0].result = 1;
-
-	int res = gui_message_box("Language",
+	int res = gui_message_box(app, "Language",
 		"Please choose a language.", buttons, 1);
+	printf("messageBox return %d\n", res);
 
 	if (res == 1) {
 		buttons[0].label = "No";
 		buttons[1].label = "Yes";
-		res = gui_message_box("Answer this question",
-			"Do you like to program in C language?", buttons, 2);
+		buttons[2].label = "Maybe";
+		res = gui_message_box(app, "Answer this question",
+			"Do you like to program in C language?", buttons, 3);
+		printf("messageBox return %d\n", res);
 		if (res == 1) {
 			buttons[0].label = "Accept";
-			res = gui_message_box("Oops",
+			res = gui_message_box(app, "Oops",
 				"Unfortunately, you are a bad person.\nThere is nothing I can do for you.", buttons, 1);
+			printf("messageBox return %d\n", res);
 		}
 	}
 }
 
+#define ID_FILE_OPEN	1
+#define ID_FILE_FORM 	2
+#define ID_MODE_ALERT	3
+#define ID_MODE_ARCADE	4
+#define ID_MODE_KEY 	5
+
 int main(int argc, char **argv) {
 	int error = -1;
 	gui_info ui = {0};
-	if (gui_window(&ui, "Skeleton", 600, 600, NULL) && gui_create_menu(&ui, 2, 2)) {
+	if (gui_window(&ui, "Skeleton", 600, 600, NULL) && gui_menubar(&ui, 2)) {
 		menuitem_t items[] = {
-			{no_menu," Open", gui_open_dialog, 'o', NULL},
-			{no_menu," Form", form_prompt, 'f', NULL},
+			{ID_FILE_OPEN,"Open ", gui_open_dialog, 'o', NULL},
+			{ID_FILE_FORM,"Form ", form_prompt, 'f', NULL},
 		};
 
 		menuitem_t items_two[] = {
-			{no_menu," Alert Box", message_box, 'a', NULL},
-			{no_menu," Arcade Box", color_box, 'x', NULL},
-			{no_menu," Key Box", key_box, 'w', NULL},
+			{ID_MODE_ALERT,"Alert Box ", message_box, 'a', NULL},
+			{ID_MODE_ARCADE,"Arcade Box ", color_box, 'x', NULL},
+			{ID_MODE_KEY,"Key Box ", key_box, 'w', NULL},
 		};
 
-		gui_font(&ui, 0, "lucidasans-12");
-		gui_font(&ui, 1, "lucidasans-10");
+		gui_font(&ui, lucida);
 		if (!gui_queryfont(&ui)) {
 			return 1;
 		}

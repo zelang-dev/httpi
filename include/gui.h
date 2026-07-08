@@ -7,7 +7,46 @@
 #include <objc/objc-runtime.h>
 #elif defined(_WIN32)
 #include <windows.h>
+#include <commctrl.h>
+#include <strsafe.h>
+typedef struct _MSGBOXDATA {
+	MSGBOXPARAMSW;
+	HWND    pwndOwner;          // Internal use only
+	DWORD   dwPadding;          // Note: Windows XP has no this field
+	WORD    wLanguageId;
+	INT *pidButton;          	// Array of button IDs
+	LPWSTR *ppszButtonText;     // Array of button text strings
+	DWORD   cButtons;           // Number of buttons
+	UINT    DefButton;          // Default button ID
+	UINT    CancelId;           // Button ID corresponding to Cancel action
+	DWORD   dwTimeout;          // Message box timeout
+	HWND *phwndList;          	// Internal use only
+	DWORD   dwReserved[20];     // Reserved for future use
+} MSGBOXDATA, *PMSGBOXDATA;
+
+typedef struct ButtonW {
+	PCWSTR label;
+	int result;
+	int ID;
+} ButtonW;
+
+typedef struct {
+	HFONT hfont;
+	int   cchItemText;
+	char  szItemText[1];
+} menu_font_info;
+
+#define main(...)                       \
+    main(int argc, char** argv) {       \
+		(void)argc;						\
+		(void)argv;						\
+		return WinMain(0, 0, 0, 0);		\
+    }                                   \
+    int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdline, int show)
+
+#define lucida "Lucida Sans"
 #else
+#define lucida "lucidasans-12"
 #define _DEFAULT_SOURCE 1
 #include <GL/gl.h>
 #include <GL/glx.h>
@@ -209,15 +248,55 @@
 #define RGB_WHITE_SMOKE			245,245,245
 #define RGB_WHITE				255,255,255
 
+#define GetNumMenus(X) 		X->num_menus
 #define item_name_limit 	50
 #define none_selected 		-1
 #define no_menu 			-1
 #define max_font_name_length 60
+#define MAX_MSGBUTTONS  11
 
-typedef struct Button {
+enum {
+	ID_GUI_ICON = 900,
+	ID_GUI_MENU = 1000,
+	ID_GUI_CONTROL = 2000,
+	ID_GUI_CONFIRM,
+	ID_GUI_CANCEL,
+	ID_GUI_STATUS = 3000,
+	ID_GUI_ERROR,
+	ID_GUI_STATIC = 4000,
+};
+
+typedef struct Buttons_s {
 	char *label;
 	int result;
+	int ID;
 } Button;
+
+typedef union {
+	int _int;
+	unsigned int _unsigned;
+	char _char;
+	short _short;
+	long _long;
+	double _double;
+	size_t _size_t;
+	char *text;
+	void *ptr;
+	intptr_t intptr;
+	uintptr_t uintptr;
+	ptrdiff_t *ptrdiff;
+} ui_value;
+
+typedef struct Forms_s {
+	uintptr_t ID;
+	char *caption;
+	char *value;
+	int width;
+	int max;
+} Form;
+
+typedef Button ui_button[MAX_MSGBUTTONS];
+typedef Form ui_field;
 
 #if defined(__APPLE__)
 	/* Platform Window type */
@@ -230,6 +309,18 @@ typedef HWND wnd_t;
 typedef Widget wnd_t;
 #endif
 
+#if defined(__APPLE__)
+	/* Platform FONT type */
+typedef uintptr_t ui_font_t;
+#elif defined(_WIN32)
+	/* Platform FONT type */
+typedef HFONT ui_font_t;
+#else
+	/* Platform FONT type */
+typedef XFontStruct *ui_font_t;
+#endif
+
+typedef struct gui_info_s gui_info;
 typedef struct {
 	/* `Application` main Window handle */
 	wnd_t wnd;
@@ -237,17 +328,26 @@ typedef struct {
 	void *app_data;
 	/* App's per `Window` title */
 	const char *name;
+#if defined(_WIN32)
+	gui_info *gui;
+#endif
 	/* App's per `Window` close code */
 	unsigned long code;
-} actionbar_t;
+} ui_t;
 
-typedef void (*_menu_cb)(actionbar_t *, void *data);
+typedef void (*_menu_cb)(ui_t *, void *data);
+typedef void (*ui_file_cb)(ui_t *, const char *);
+typedef bool (*ui_form_cb)(const ui_t *, uint32_t field_id, void *, char *err);
 typedef struct {
-	short menu_id;
+	int menu_id;
 	char *item_name;
 	_menu_cb action;
 	char alphaKey;
 	void *data;
+#ifdef _WIN32
+	HFONT hfont;
+	int   cchItemText;
+#endif
 } menuitem_t;
 
 typedef struct menu_s {
@@ -257,28 +357,40 @@ typedef struct menu_s {
 	int selected;
 	int menu_id;
 	char menu_name[32];
+#if defined(__APPLE__)
+#elif defined(_WIN32)
+	HMENU hMenu;
+	HFONT hfont;
+#else
 	double x_start;
 	double x_end;
 	double width;
+#endif
 } menu_t;
 
 typedef struct {
+	int state;
+	int num_menus;
+	/* main menu */
+	menu_t *menus;
 #if defined(__APPLE__)
 #elif defined(_WIN32)
+	/* main `window` menu bar */
+	HMENU hMenubar;
+	long lfHeight;
+	int num_fonts;
 #else
 	XWindowAttributes gwa;
-	int state;
-	menu_t *menus;
-	int num_menus;
-	char **font_names;
 	int num_fonts;
+	char **font_names;
 	int *size;
 	GLuint *font_lists;
-	XFontStruct *font_info;
 #endif
+	const char *font_names;
+	ui_font_t font_info;
 } menu_bar_t;
 
-typedef struct gui_info_s {
+struct gui_info_s {
 	menu_bar_t *bar_info;
 	int width;
 	int height;
@@ -291,7 +403,15 @@ typedef struct gui_info_s {
 	const char *title;
 	uint32_t *buf;
 	wnd_t wnd;
-#if !defined(__APPLE__) && !defined(_WIN32)
+	ui_t *app;
+	/* For passing data to custom `Window` handler routine */
+	void *user_data;
+#if defined(_WIN32)
+	WNDCLASSEX wc;
+	MSG msg;
+	HINSTANCE hinst;
+	COLORREF txtCr, bkCr;
+#elif !defined(__APPLE__)
 	Colormap cmap;
 	Window win, root;
 	Atom wmDeleteMessage;
@@ -304,25 +424,27 @@ typedef struct gui_info_s {
 	GC gc;
 	XImage *img;
 #endif
-} gui_info;
+};
 
 #ifndef C_API
 #	define C_API extern
 #endif
 
-C_API void gui_open_dialog(actionbar_t *filedialog, void *data);
-C_API int gui_message_box(const char *title, const char *text, const Button *buttons, int numButtons);
-C_API int gui_create_menu(gui_info *, int num_menu, int numFonts);
+C_API int gui_form(gui_info *, ui_t *app, const char *title, Form *fill, int numFields, ui_form_cb verify);
+C_API void gui_open_dialog(ui_t *filedialog, void *data);
+C_API int gui_message_box(ui_t *, const char *title, const char *text, const Button *buttons, int numButtons);
+C_API int gui_menubar(gui_info *, int num_menu);
 C_API void gui_free(gui_info *);
-C_API int gui_font(gui_info *, int font_num, const char *font);
+C_API void gui_font(gui_info *, const char *font);
 C_API int gui_queryfont(gui_info *);
 C_API int gui_menu(gui_info *, int num_menu, menuitem_t *items, int number_items, int id, char *name);
 C_API void gui_querymenu(gui_info *);
 C_API int gui_handler(gui_info *);
-C_API void gui_active(actionbar_t *window);
-C_API void gui_cancel(wnd_t window);
+C_API void gui_active(ui_t *);
+C_API void gui_destroy(ui_t *);
+C_API void gui_cancel(wnd_t );
 
-C_API int gui_window(gui_info *ui, const char *title, const int width, const int height, uint32_t *buffer);
+C_API int gui_window(gui_info *, const char *title, const int width, const int height, uint32_t *buffer);
 C_API int gui_loop(gui_info *);
 C_API void gui_close(gui_info *);
 C_API void gui_sleep(int64_t ms);

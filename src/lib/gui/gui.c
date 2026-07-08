@@ -1,4 +1,6 @@
 #include <gui.h>
+static volatile gui_info *main_gui_info = NULL;
+static volatile bool main_gui_shutdown = false;
 #if defined(__APPLE__)
 static void gui_draw_rect(id v, SEL s, CGRect r) {
 	(void)r, (void)s;
@@ -102,6 +104,8 @@ int gui_loop(gui_info *ui) {
 	return 0;
 }
 #elif defined(_WIN32)
+#define ID_WINDOW_ICON	900
+
 // clang-format off
 static const uint8_t _GUI_KEYCODES[] = {0,27,49,50,51,52,53,54,55,56,57,48,45,61,8,9,81,87,69,82,84,89,85,73,79,80,91,93,10,0,65,83,68,70,71,72,74,75,76,59,39,96,0,92,90,88,67,86,66,78,77,44,46,47,0,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,17,3,0,20,0,19,0,5,18,4,26,127};
 // clang-format on
@@ -109,8 +113,138 @@ typedef struct BINFO {
 	BITMAPINFOHEADER    bmiHeader;
 	RGBQUAD             bmiColors[3];
 }BINFO;
-static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam,
-	LPARAM lParam) {
+
+static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	gui_info *ui = (gui_info *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+	static HMENU hmenu;             // handle to main menu
+	static COLORREF crSelText;  // text color of selected item
+	static COLORREF crSelBkgnd = RGB(173, 216, 230); // background color of selected item
+	COLORREF crText;            // text color of unselected item
+	COLORREF crBkgnd;           // background color unselected item
+	LPMEASUREITEMSTRUCT lpmis;  // pointer to item of data
+	LPDRAWITEMSTRUCT lpdis;     // pointer to item drawing data
+	HDC hdc;                    // handle to screen DC
+	SIZE size;                  // menu-item text extents
+	WORD wCheckX;               // check-mark width
+	int nTextX;                 // width of menu item
+	int nTextY;                 // height of menu item
+	int i;                      // loop counter
+	HFONT hfontOld;             // handle to old font
+	BOOL fSelected = FALSE;     // menu-item selection flag
+	size_t length = 0;
+	size_t *pcch = &length;
+	HRESULT hResult;
+	HMENU hCharacterMenu;
+	menuitem_t *pmyitem;
+	switch (msg) {
+		case WM_MEASUREITEM:
+			// Retrieve a device context for the main window.
+			hdc = GetDC(hwnd);
+
+			// Retrieve pointers to the menu item's
+			// MEASUREITEMSTRUCT structure and MYITEM structure.
+			lpmis = (LPMEASUREITEMSTRUCT)lParam;
+			pmyitem = (menuitem_t *)lpmis->itemData;
+
+			// Select the font associated with the item into
+			// the main window's device context.
+			hfontOld = (HFONT)SelectObject(hdc, pmyitem->hfont);
+
+			// Retrieve the width and height of the item's string,
+			// and then copy the width and height into the
+			// MEASUREITEMSTRUCT structure's itemWidth and
+			// itemHeight members.
+			hResult = StringCchLength(pmyitem->item_name, STRSAFE_MAX_CCH, pcch);
+			if (FAILED(hResult)) {
+				// Add code to fail as securely as possible.
+				return (LRESULT)0;
+			}
+
+			GetTextExtentPoint32(hdc, pmyitem->item_name, *pcch, &size);
+			lpmis->itemWidth = size.cx;
+			lpmis->itemHeight = size.cy;
+
+			// Select the old font back into the device context,
+			// and then release the device context.
+			SelectObject(hdc, hfontOld);
+			ReleaseDC(hwnd, hdc);
+			return TRUE;
+		case WM_DRAWITEM:
+			// Get pointers to the menu item's DRAWITEMSTRUCT
+			// structure and MYITEM structure.
+			lpdis = (LPDRAWITEMSTRUCT)lParam;
+			pmyitem = (menuitem_t *)lpdis->itemData;
+
+			// If the user has selected the item, use the selected
+			// text and background colors to display the item.
+			if (lpdis->itemState & ODS_SELECTED) {
+				crText = SetTextColor(lpdis->hDC, crSelText);
+				crBkgnd = SetBkColor(lpdis->hDC, crSelBkgnd);
+				fSelected = TRUE;
+			}
+
+			// Remember to leave space in the menu item for the
+			// check-mark bitmap. Retrieve the width of the bitmap
+			// and add it to the width of the menu item.
+			wCheckX = GetSystemMetrics(SM_CXMENUCHECK);
+			nTextX = wCheckX + lpdis->rcItem.left;
+			nTextY = lpdis->rcItem.top;
+
+			// Select the font associated with the item into the
+			// item's device context, and then draw the string.
+			hfontOld = (HFONT)SelectObject(lpdis->hDC, pmyitem->hfont);
+			hResult = StringCchLength(pmyitem->item_name, STRSAFE_MAX_CCH, pcch);
+			if (FAILED(hResult)) {
+				// Add code to fail as securely as possible.
+				return (LRESULT)0;
+			}
+
+			ExtTextOut(lpdis->hDC, nTextX, nTextY, ETO_OPAQUE,&lpdis->rcItem, pmyitem->item_name,*pcch, NULL);
+
+			// Select the previous font back into the device
+			// context.
+			SelectObject(lpdis->hDC, hfontOld);
+
+			// Return the text and background colors to their
+			// normal state (not selected).
+			if (fSelected) {
+				SetTextColor(lpdis->hDC, crText);
+				SetBkColor(lpdis->hDC, crBkgnd);
+			}
+
+			return TRUE;
+		case WM_CLOSE:
+			if (ui == main_gui_info)
+				main_gui_shutdown = true;
+			DestroyWindow(hwnd);
+			break;
+		case WM_DESTROY:
+			PostQuitMessage(0);
+			break;
+		case WM_COMMAND:
+			ui_t menu[1];
+			menuitem_t *menus_active;
+			int i, x, count, which = LOWORD(wParam);
+			for (i = 0; i < ui->bar_info->num_menus; i++) {
+				count = ui->bar_info->menus[i].num_items;
+				menus_active = ui->bar_info->menus[i].items;
+				for (x = 0; x < count; x++) {
+					if (which == menus_active[x].menu_id) {
+						memset(menu, 0, sizeof(ui_t));
+						menu->wnd = ui->wnd;
+						menu->app_data = ui->hinst;
+						menus_active[x].action(menu, menus_active[x].data);
+						return 0;
+					}
+				}
+			}
+		default:
+			return DefWindowProc(hwnd, msg, wParam, lParam);
+	}
+	return 0;
+}
+
+static LRESULT CALLBACK gui_wndproc_arcade(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	gui_info *ui = (gui_info *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 	switch (msg) {
 		case WM_PAINT: {
@@ -158,47 +292,575 @@ static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam,
 	return 0;
 }
 
+static BOOL ui_open_cb(ui_t *edit, LPCTSTR pszFileName) {
+	HANDLE hFile;
+	BOOL bSuccess = FALSE;
+
+	hFile = CreateFile(pszFileName, GENERIC_READ, FILE_SHARE_READ, NULL,
+		OPEN_EXISTING, 0, NULL);
+	if (hFile != INVALID_HANDLE_VALUE) {
+		DWORD dwFileSize;
+
+		dwFileSize = GetFileSize(hFile, NULL);
+		if (dwFileSize != 0xFFFFFFFF) {
+			LPSTR pszFileText;
+
+			pszFileText = GlobalAlloc(GPTR, dwFileSize + 1);
+			if (pszFileText != NULL) {
+				DWORD dwRead;
+				if (ReadFile(hFile, pszFileText, dwFileSize, &dwRead, NULL)) {
+					pszFileText[dwFileSize] = 0; // Add null terminator
+					HWND hEdit = CreateWindowEx(WS_EX_RIGHTSCROLLBAR, TEXT("edit"), pszFileName,
+						WS_VISIBLE | WS_POPUPWINDOW | WS_CHILD | WS_SIZEBOX |
+						WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL | ES_MULTILINE,
+						150, 150, 565, 320, edit->wnd, NULL, edit->app_data, NULL);
+					SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+					if (SetWindowText(hEdit, pszFileText))
+						bSuccess = TRUE;
+				}
+				GlobalFree(pszFileText);
+			}
+		}
+		CloseHandle(hFile);
+	}
+	return bSuccess;
+}
+
+void gui_open_dialog(ui_t *filedialog, void *data) {
+	int ok;
+	OPENFILENAME ofn;
+	static char result_buf[2048];
+	result_buf[0] = '\0';
+
+	memset(&ofn, 0, sizeof(OPENFILENAME));
+	ofn.hwndOwner = filedialog->wnd ? filedialog->wnd : NULL;
+	ofn.hInstance = filedialog->app_data ? filedialog->app_data : NULL;
+	ofn.lStructSize = sizeof(ofn);
+	ofn.lpstrFilter = TEXT("All files(*.*)\0*.*\0");//(opt);
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFile = result_buf;
+	ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+	ofn.nMaxFile = sizeof(result_buf) - 1;
+	ofn.lpstrInitialDir = "./";
+	ofn.lpstrTitle = "Select File";
+	ofn.lpstrDefExt = "*.*";
+	ok = GetOpenFileName(&ofn);
+	if (ok && !data) {
+		ui_open_cb(filedialog, ofn.lpstrFile);
+	} else if (ok && data) {
+		((ui_file_cb)data)(filedialog, ofn.lpstrFile);
+	}
+}
+
+static LRESULT CALLBACK gui_wndproc_form(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	gui_info *ui = (gui_info *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+	if (ui == NULL)
+		return DefWindowProc(hwnd, msg, wParam, lParam);
+
+	ui_form_cb verify = ui->user_data;
+	const ui_t *app = ui->app;
+	Form *form = app->app_data;
+	const unsigned long numFields = app->code;
+	int i, action, which;
+	HWND hStatus, hEdit, hReady;
+	HDC hdc;
+
+	switch (msg) {
+		case WM_CTLCOLOREDIT:
+			if (ui == main_gui_info)
+				return 0;
+
+			if (lParam == (LRESULT)GetFocus()) {
+				hdc = (HDC)wParam;
+				SetTextColor(hdc, RGB(0, 0, 0));
+				SetBkColor(hdc, RGB(255, 255, 255));
+				return (LRESULT)GetStockObject(WHITE_BRUSH);
+			} else {
+				hdc = (HDC)wParam;
+				SetTextColor(hdc, RGB(255, 255, 255)); 	// RGB_WHITE
+				SetBkColor(hdc, RGB(178, 34, 34)); 		// RGB_FIREBRICK
+				return (LRESULT)GetStockObject(WHITE_BRUSH);
+			}
+		case WM_DRAWITEM:
+			LPDRAWITEMSTRUCT lpDIS = (LPDRAWITEMSTRUCT)lParam;
+			PTSTR ptStr = (PTSTR)lpDIS->itemData;
+			SetTextColor(lpDIS->hDC, RGB(0xFF, 00, 00));
+			ExtTextOut(lpDIS->hDC, 0, 0, 0, &lpDIS->rcItem, ptStr, _tcslen(ptStr), NULL);
+			return (LRESULT)0;
+		case WM_COMMAND:
+			which = LOWORD(wParam);
+			action = HIWORD(wParam);
+			if (action == BN_CLICKED && which == ID_GUI_CANCEL) {
+				DestroyWindow(hwnd);
+				return (LRESULT)0;
+			} else if (action == BN_CLICKED && which == ID_GUI_CONFIRM) {
+				hStatus = GetDlgItem(hwnd, ID_GUI_STATUS);
+				for (i = 0; i < numFields; i++) {
+					which = form[i].ID;
+					hEdit = GetDlgItem(hwnd, which);
+					hReady = GetDlgItem(hwnd, (ID_GUI_ERROR + which));
+					int len = GetWindowTextLength(hEdit);\
+					SendMessage(hReady, BM_SETCHECK, BST_CHECKED, 0);
+					if (len > form[i].max) {
+						SendMessage(hReady, BM_SETCHECK, BST_UNCHECKED, 0);
+						SendMessage(hStatus, SB_SETTEXT, SBT_OWNERDRAW, (LPARAM)"Error: length overflow");
+						return (LRESULT)0;
+					}
+
+					SendMessage(hStatus, SB_SETTEXT, SBT_OWNERDRAW, (LPARAM)"");
+					GetDlgItemTextA(hEdit, which, form[i].value, form[i].max);
+					if (verify) {
+						CHAR status[260];
+						if (verify(app, which, form[i].value, status)) {
+							SetDlgItemTextA(hEdit, (ID_GUI_STATUS + which), status);
+						} else {
+							SendMessage(hReady, BM_SETCHECK, BST_UNCHECKED, 0);
+							hEdit = GetDlgItem(hwnd, ID_GUI_STATUS);
+							SendMessage(hEdit, SB_SETTEXT, SBT_OWNERDRAW, (LPARAM)status);
+							return (LRESULT)0;
+						}
+					}
+				}
+				DestroyWindow(hwnd);
+			}
+			break;
+		case WM_CLOSE:
+			DestroyWindow(hwnd);
+			break;
+		case WM_DESTROY:
+			PostQuitMessage(0);
+			break;
+	}
+
+	return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+int gui_form(gui_info *ui, ui_t *app, const char *title, Form *fill, int numFields, ui_form_cb verify) {
+	int i, x = 0, spacing = 30;
+	HWND hEdit, pWnd = app->wnd;
+
+	ui->hinst = app->app_data;
+	ui->title = title;
+	ui->width = 320;
+	ui->height = 300;
+	ui->buf = NULL;
+	ui->app = app;
+	ui->txtCr = RGB(255, 0, 0);
+	ui->bkCr = RGB(0, 0, 0);
+	ui->user_data = verify;
+	ui->app->app_data = fill;
+	ui->app->code = numFields;
+	ui->app->gui = ui;
+
+	memset(&ui->wc, 0, sizeof(ui->wc));
+	ui->wc.cbSize = sizeof(WNDCLASSEX);
+	ui->wc.style = CS_VREDRAW | CS_HREDRAW | CS_NOCLOSE;
+	ui->wc.hbrBackground = GetSysColorBrush(COLOR_3DFACE);
+	ui->wc.lpfnWndProc = gui_wndproc_form;
+	ui->wc.hInstance = ui->hinst;
+	ui->wc.hCursor = LoadCursor(0, IDC_ARROW);
+	ui->wc.lpszClassName = "Edit control";
+	RegisterClassEx(&ui->wc);
+
+	if ((ui->wnd = CreateWindowEx(WS_EX_NOACTIVATE | WS_EX_DLGMODALFRAME,
+		ui->wc.lpszClassName, ui->title,
+		WS_CAPTION | WS_POPUP | WS_VISIBLE | WS_CHILD | WS_SYSMENU,
+		200, 200,
+		ui->width, ui->height, pWnd, NULL, ui->hinst, NULL)) == NULL)
+		return 0;
+
+	SetWindowLongPtr(ui->wnd, GWLP_USERDATA, (LONG_PTR)ui);
+	for (i = 0; i < numFields; i++) {
+		x += spacing;
+		if (fill[i].caption != NULL) {
+			hEdit = CreateWindow("Static", fill[i].caption, WS_CHILD | WS_VISIBLE | SS_LEFT, 6, x - 10,
+				fill[i].width, 11, ui->wnd, (HMENU)ID_GUI_STATIC, NULL, NULL);
+			SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+		}
+
+		CreateWindow("Edit", fill[i].value, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 5, (x + 5),
+			fill[i].width, 21, ui->wnd, (HMENU)(fill[i].ID), NULL, NULL);
+		CreateWindow("Button", "", WS_CHILD | WS_VISIBLE | BS_CHECKBOX | BS_TEXT | BS_FLAT | BS_VCENTER, fill[i].width - 12, (x + 9),
+			12, 12, ui->wnd, (HMENU)(ID_GUI_ERROR + fill[i].ID), NULL, NULL);
+	}
+
+	hEdit = CreateWindow("Button", "Confirm", WS_VISIBLE | WS_CHILD | BS_PUSHLIKE | WS_TABSTOP, 135, (ui->height - 83), 80, 25,
+		ui->wnd, (HMENU)(ID_GUI_CONFIRM), NULL, NULL);
+	SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+
+	hEdit = CreateWindow("Button", "Cancel", WS_VISIBLE | WS_CHILD | BS_PUSHLIKE | WS_TABSTOP, 220, (ui->height - 83), 80, 25,
+		ui->wnd, (HMENU)(ID_GUI_CANCEL), NULL, NULL);
+	SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+
+	hEdit = CreateWindow(STATUSCLASSNAME, "", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+		0, ui->height, (ui->width), 5, ui->wnd, (HMENU)ID_GUI_STATUS, NULL, NULL);
+	SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+
+	ShowWindow(ui->wnd, SW_NORMAL);
+	UpdateWindow(ui->wnd);
+	return 1;
+}
+
 int gui_window(gui_info *ui, const char *title, const int width, const int height, uint32_t *buffer) {
+	if (main_gui_info == NULL) {
+		main_gui_info = ui;
+	}
+
 	ui->title = title;
 	ui->width = (int)width;
 	ui->height = (int)height;
 	ui->buf = buffer;
-	HINSTANCE hInstance = GetModuleHandle(NULL);
-	WNDCLASSEX wc = {0};
-	wc.cbSize = sizeof(WNDCLASSEX);
-	wc.style = CS_VREDRAW | CS_HREDRAW;
-	wc.lpfnWndProc = gui_wndproc;
-	wc.hInstance = hInstance;
-	wc.lpszClassName = ui->title;
-	RegisterClassEx(&wc);
-	ui->hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, ui->title, ui->title,
-		WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-		ui->width, ui->height, NULL, NULL, hInstance, NULL);
+	ui->hinst = GetModuleHandle(NULL);
 
-	if (ui->hwnd == NULL)
-		return -1;
-	SetWindowLongPtr(ui->hwnd, GWLP_USERDATA, (LONG_PTR)f);
-	ShowWindow(ui->hwnd, SW_NORMAL);
-	UpdateWindow(ui->hwnd);
+	memset(&ui->wc, 0, sizeof(ui->wc));
+	ui->wc.cbSize = sizeof(WNDCLASSEX);
+	ui->wc.style = CS_VREDRAW | CS_HREDRAW;
+	ui->wc.lpfnWndProc = (buffer == NULL ? gui_wndproc : gui_wndproc_arcade);
+	ui->wc.hInstance = ui->hinst;
+	ui->wc.hIcon = LoadIcon(ui->hinst, MAKEINTRESOURCE(ID_WINDOW_ICON));
+	ui->wc.hCursor = LoadCursor(0, IDC_ARROW);
+	ui->wc.lpszClassName = ui->title;
+	RegisterClassEx(&ui->wc);
+
+	if ((ui->wnd = CreateWindowEx((buffer == NULL ? WS_EX_WINDOWEDGE : (WS_EX_CLIENTEDGE | WS_EX_TOPMOST)),
+		ui->title, ui->title, (buffer == NULL ? WS_OVERLAPPEDWINDOW : (WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX)),
+		CW_USEDEFAULT, CW_USEDEFAULT, ui->width, ui->height, NULL, NULL, ui->hinst, NULL)) == NULL)
+		return 0;
+
+	SetWindowLongPtr(ui->wnd, GWLP_USERDATA, (LONG_PTR)ui);
+	ShowWindow(ui->wnd, SW_NORMAL);
+	UpdateWindow(ui->wnd);
+	return 1;
+}
+
+int gui_menu(gui_info *ui, int num_menu, menuitem_t *items, int number_items, int id, char *name) {
+	int r = 0;
+	menu_t *menu = &(ui->bar_info->menus[num_menu]);
+	menu->num_items = number_items;
+	menu->selected = none_selected;
+	menu->menu_id = id;
+	menu->items = items;
+	menu->hMenu = CreateMenu();
+	if (menu->hMenu) {
+		for (r = 0; r < number_items; r++) {
+			// add menu items
+			AppendMenu(menu->hMenu, MF_STRING, items[r].menu_id, items[r].item_name);
+		}
+		AppendMenu(ui->bar_info->hMenubar, MF_POPUP, (UINT_PTR)menu->hMenu, name);
+
+		// attach menu bar to the window
+		SetMenu(ui->wnd, ui->bar_info->hMenubar);
+	}
+
+	return r;
+}
+
+int gui_menubar(gui_info *ui, int num_menu) {
+	if ((ui->bar_info = (menu_bar_t *)calloc(1, sizeof(menu_bar_t)))) {
+		ui->bar_info->hMenubar = CreateMenu();
+		ui->bar_info->num_menus = num_menu;
+		ui->bar_info->state = 0;
+		ui->bar_info->menus = (menu_t *)calloc(1, GetNumMenus(ui->bar_info) * sizeof(menu_t));
+		return 1;
+	}
+
 	return 0;
 }
 
-void gui_close(gui_info *ui) { (void)ui; }
+static int LoadStringEx(HMODULE hModule, UINT wID, PWSTR pBuffer, int cchBufferMax, WORD wLangId) {
+	HRSRC hRsrc;
+	int cch = 0;
+	uintptr_t GroupId = (wID >> 4) + 1;
+
+	if (pBuffer == NULL) {
+		return 0;
+	}
+
+	hRsrc = FindResourceEx(hModule, RT_STRING, (LPCSTR)GroupId, wLangId);
+	if (hRsrc) {
+		HGLOBAL hStringSeg = LoadResource(hModule, hRsrc);
+		PWSTR psz = (PWSTR)LockResource(hStringSeg);
+		if (psz) {
+			wID &= 0x0F;
+			while (TRUE) {
+				cch = *psz++;
+				if (wID-- == 0) {
+					break;
+				}
+				psz += cch;
+			}
+
+			if (cchBufferMax == 0) {
+				*(PWSTR *)pBuffer = psz;
+			} else {
+				cchBufferMax--;
+				if (cch > cchBufferMax) {
+					cch = cchBufferMax;
+				}
+
+				RtlCopyMemory(pBuffer, psz, cch * sizeof(WCHAR));
+			}
+			UnlockResource(hStringSeg);
+		}
+	}
+
+	if (cchBufferMax != 0) {
+		pBuffer[cch] = 0;
+	}
+	return cch;
+}
+
+#define MAX_MSGTEXT     32
+typedef int (WINAPI *PROC_SOFTMODALMESSAGEBOX)(PMSGBOXDATA lpmb);
+typedef int (WINAPI *PROC_LOADSTRINGBASEEXW)(HINSTANCE hInstance, UINT uID, PWSTR lpBuffer, int nBufferMax, int LangId);
+
+static int CustomBox(HWND hWnd, PCWSTR Text, PCWSTR Caption, UINT Type, ButtonW *pButtons, UINT cButtons, UINT dwTimeout, HINSTANCE hInstance, PCWSTR pszIcon, LANGID wLangId) {
+	HMODULE hUser32 = LoadLibrary("user32");
+	PROC_SOFTMODALMESSAGEBOX pSoftModalMessageBox = (PROC_SOFTMODALMESSAGEBOX)GetProcAddress(hUser32, "SoftModalMessageBox");
+	PROC_LOADSTRINGBASEEXW LoadStringBaseExW = (PROC_LOADSTRINGBASEEXW)GetProcAddress(LoadLibrary("kernel32"), "LoadStringBaseExW");
+	MSGBOXDATA mbd = {0};
+	MSGBOXDATA *pmbd = &mbd;
+	int ButtonIds[MAX_MSGBUTTONS] = {0};
+	WCHAR *ButtonTexts[MAX_MSGBUTTONS] = {0};
+	WCHAR TextBuffer[MAX_MSGBUTTONS][MAX_MSGTEXT] = {0};
+	BOOL fCancel = FALSE;
+	UINT i;
+	ButtonW MsgBoxButtonNull = {0};
+
+	if (pSoftModalMessageBox == 0) {
+		return 0;
+	}
+
+	if (pButtons == NULL) {
+		pButtons = &MsgBoxButtonNull;
+		cButtons = 1;
+	}
+
+	if (cButtons == 0) {
+		cButtons = 1;
+	}
+
+	// Max support 11 buttons
+	if (cButtons > MAX_MSGBUTTONS) {
+		cButtons = MAX_MSGBUTTONS;
+	}
+
+	for (i = 0; i < cButtons; i++) {
+		ButtonIds[i] = pButtons[i].ID;
+		ButtonTexts[i] = (WCHAR *)pButtons[i].label;
+		if (ButtonIds[i] == IDCANCEL) {
+			fCancel = TRUE;
+		}
+
+		// If user doesn't specify button text, try to load one from user32.dll resource
+		if (ButtonTexts[i] == 0) {
+			// Also can use the LoadStringBaseExW (available in Windows Vista or later) to load
+			int n = (LoadStringBaseExW != NULL)
+				? LoadStringBaseExW(hUser32, ButtonIds[i] + 800 - 1, TextBuffer[i], MAX_MSGTEXT, wLangId)
+				: LoadStringEx(hUser32, ButtonIds[i] + 800 - 1, TextBuffer[i], MAX_MSGTEXT, wLangId);
+			if (n == 0) {
+				n = LoadStringW(hUser32, ButtonIds[i] + 800 - 1, TextBuffer[i], MAX_MSGTEXT);
+			}
+
+			ButtonTexts[i] = TextBuffer[i];
+		}
+	}
+
+	mbd.cbSize = sizeof(MSGBOXPARAMSW);
+	mbd.hwndOwner = hWnd;
+	mbd.hInstance = hInstance;
+	mbd.lpszText = Text;
+	mbd.lpszCaption = Caption;
+	mbd.dwStyle = Type;
+	if (pszIcon != NULL) {
+		mbd.lpszIcon = pszIcon;
+		mbd.dwStyle &= (~MB_ICONMASK);
+		mbd.dwStyle |= MB_USERICON;
+	}
+
+	if (LoadStringBaseExW == NULL) {
+		pmbd = (MSGBOXDATA *)((UCHAR *)&mbd - sizeof(DWORD));
+	}
+
+	pmbd->wLanguageId = wLangId;
+	pmbd->dwTimeout = (dwTimeout == 0) ? INFINITE : dwTimeout;
+	pmbd->pidButton = ButtonIds;
+	pmbd->ppszButtonText = ButtonTexts;
+	pmbd->cButtons = cButtons;
+	pmbd->DefButton = (mbd.dwStyle & MB_DEFMASK) >> 8;
+	if (cButtons == 1 && pButtons[0].ID == IDOK) {
+		pmbd->CancelId = IDOK;
+	} else if (fCancel) {
+		pmbd->CancelId = IDCANCEL;
+		mbd.dwStyle |= MB_OKCANCEL;  // If MB_OK SoftModalMessageBox will return 1 always
+	} else {
+		mbd.dwStyle |= MB_OKCANCEL;  // If MB_OK SoftModalMessageBox will return 1 always
+	}
+
+	return pSoftModalMessageBox(&mbd);
+}
+
+/**
+ * Parameters:
+ *
+ * - `hWnd` - Handle to the owner window of the message box to be created. If this parameter is NULL, the message box has no owner window.
+ * - `Text` - Pointer to a null-terminated string that contains the message to be displayed.
+ * - `Caption` - Pointer to a null-terminated string that contains the dialog box title. If this parameter is NULL, the default title Error is used.
+ * - `Type` - Specifies the contents and behavior of the dialog box.
+ * - `cButtons` - Specifies the count of pButtons
+ * - `dwTimeout` - Specifies the time-out value to close the msgdlg automatically, in milliseconds. 0 means INFINITE
+ * - `hInstance` - Handle to the module that contains the icon resource identified by the lpszIcon member, and the string resource identified by the lpszText or lpszCaption member.
+ * - `lpszIcon` - Identifies an icon resource. This parameter can be either a null-terminated string or an integer resource identifier passed to the MAKEINTRESOURCE macro.
+ * - `wLangId` - Specifies the language of default button text if not specify one in MSGBUTTON->ButtonText */
+int message_box_ex(HWND hWnd, PCSTR Caption, PCSTR Text, UINT Type,
+	Button *pButtons, UINT cButtons, UINT dwTimeout, HINSTANCE hInstance, PCSTR pszIcon, LANGID wLangId) {
+	int ret;
+	WCHAR *wText;
+	WCHAR *wCaption;
+	WCHAR TextBuffer[MAX_MSGBUTTONS][MAX_MSGTEXT] = {0};
+	ButtonW wpButtons[MAX_MSGBUTTONS] = {0};
+	UINT i;
+
+	if (Text != NULL) {
+		size_t TextLen = strlen(Text);
+		wText = LocalAlloc(LPTR, (TextLen + 1) * sizeof(WCHAR));
+		MultiByteToWideChar(CP_ACP, 0, Text, -1, wText, (int)TextLen);
+	} else {
+		wText = L"";
+	}
+
+	if (Caption != NULL) {
+		size_t CaptionLen = strlen(Caption);
+		wCaption = LocalAlloc(LPTR, (CaptionLen + 1) * sizeof(WCHAR));
+		MultiByteToWideChar(CP_ACP, 0, Caption, -1, wCaption, (int)CaptionLen);
+	} else {
+		wCaption = L"";
+	}
+
+	for (i = 0; i < min(cButtons, MAX_MSGBUTTONS); i++) {
+		wpButtons[i].ID = i + 1;
+		wpButtons[i].result = pButtons[i].result;
+		if (pButtons[i].label != NULL) {
+			wpButtons[i].label = TextBuffer[i];
+			MultiByteToWideChar(CP_ACP, 0, pButtons[i].label, -1, TextBuffer[i], MAX_MSGTEXT - 1);
+		}
+	}
+
+	ret = CustomBox(hWnd, wText, wCaption, Type, wpButtons, cButtons, dwTimeout, hInstance, (PCWSTR)pszIcon, wLangId);
+	if (Text != NULL)
+		LocalFree(wText);
+
+	if (Caption != NULL)
+		LocalFree(wCaption);
+
+	return ret;
+}
+
+int gui_message_box(ui_t *app, const char *title, const char *text, const Button *buttons, int numButtons) {
+	return message_box_ex((app ? app->wnd : NULL), title, text, (numButtons == 1
+		? MB_ICONINFORMATION
+		: (numButtons > 2 ? MB_ICONEXCLAMATION : MB_ICONQUESTION)),
+		(Button *)buttons, numButtons, 0, (app ? (HINSTANCE)app->app_data : NULL), (numButtons > 3 ? IDI_SHIELD : NULL), 0);
+}
+
+void gui_close(gui_info *ui) {
+	if (ui) {
+		if (ui->bar_info) {
+			int i, count, x;
+			menuitem_t *menuitem;
+			for (i = 0; i < ui->bar_info->num_menus; i++) {
+				count = ui->bar_info->menus[i].num_items;
+				menuitem = ui->bar_info->menus[i].items;
+				for (x = 0; x < count; x++)
+					DeleteObject(menuitem[i].hfont);
+				DestroyMenu(ui->bar_info->menus[i].hMenu);
+			}
+			free(ui->bar_info->menus);
+			DestroyMenu(ui->bar_info->hMenubar);
+			DeleteObject(ui->bar_info->font_info);
+			free(ui->bar_info);
+			ui->bar_info = NULL;
+		}
+		ui = NULL;
+	}
+}
 
 int gui_loop(gui_info *ui) {
-	MSG msg;
-	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-		if (msg.message == WM_QUIT)
+	while (PeekMessage(&ui->msg, NULL, 0, 0, PM_REMOVE)) {
+		if (ui->msg.message == WM_QUIT || main_gui_shutdown)
 			return -1;
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+
+		TranslateMessage(&ui->msg);
+		DispatchMessage(&ui->msg);
 	}
-	InvalidateRect(ui->hwnd, NULL, TRUE);
+
+	InvalidateRect(ui->wnd, NULL, TRUE);
 	return 0;
+}
+
+void gui_active(ui_t *app) {
+	gui_handler(app->gui);
+}
+
+void gui_destroy(ui_t *app) {
+	if (app && main_gui_shutdown)
+		ExitProcess((int)app->gui->msg.wParam);
+}
+
+void gui_querymenu(gui_info *ui) {
+	menu_t menu;
+	menuitem_t *menuitem;
+	int i, id, x, count;
+	long lfHeight = ui->bar_info->lfHeight;
+	for (i = 0; i < ui->bar_info->num_menus; i++) {
+		menu = ui->bar_info->menus[i];
+		count = menu.num_items;
+		menuitem = menu.items;
+		for (x = 0; x < count; x++) {
+			id = menuitem[x].menu_id;
+			menuitem[x].hfont = CreateFont(ui->bar_info->lfHeight, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+				0, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, (FF_MODERN | DEFAULT_PITCH), ui->bar_info->font_names);
+			ModifyMenu(menu.hMenu, id, MF_BYCOMMAND | MF_OWNERDRAW, id, (LPTSTR)&menuitem[x]);
+		}
+	}
+
+	DrawMenuBar(ui->wnd);
+}
+
+void gui_font(gui_info *ui, const char *font) {
+	HFONT hf;
+	HDC hdc;
+	long lfHeight;
+
+	hdc = GetDC(ui->wnd);
+	lfHeight = -MulDiv(12, GetDeviceCaps(hdc, LOGPIXELSY), 96);
+	ReleaseDC(ui->wnd, hdc);
+	if ((hf = CreateFont(lfHeight, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET,
+		0, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, (DEFAULT_PITCH | FF_MODERN), font))) {
+		if (ui->bar_info->font_info)
+			DeleteObject(ui->bar_info->font_info);
+
+		ui->bar_info->lfHeight = lfHeight;
+		ui->bar_info->font_names = font;
+		ui->bar_info->font_info = hf;
+	}
+}
+
+int gui_queryfont(gui_info *ui) {
+	(void)ui;
+	return 1;
+}
+
+int gui_handler(gui_info *ui) {
+	while (GetMessage(&ui->msg, NULL, 0, 0)) {
+		TranslateMessage(&ui->msg);
+		DispatchMessage(&ui->msg);
+	}
+
+	return (int)ui->msg.wParam;
 }
 #else
 
-#define GetNumMenus(X) 		X->num_menus
 #define GetNumFonts(X) 		X->num_fonts
 #define LineHeight(X,Y,Z) 	((double)(X->size[2]+X->size[3])*(Y-Z))/(double)X->gwa.height
 #define MenuName(X,Y) 		X->menus[Y].menu_name
@@ -404,7 +1066,7 @@ static void ui_open_cb(Widget cmd, XtPointer client, XtPointer call_data) {
 	XMapWindow(ldpy, win);
 }
 
-void gui_open_dialog(actionbar_t *filedialog, void *data) {
+void gui_open_dialog(ui_t *filedialog, void *data) {
 	char *filter = "*";
 	char *dir = "./";
 	char *initial = "";
@@ -454,7 +1116,7 @@ void gui_cancel(wnd_t window) {
 	XSync(disp, False);
 }
 
-void gui_active(actionbar_t *window) {
+void gui_active(ui_t *window) {
 	Display *ldpy = XtDisplayOfObject((Widget)window->app_data);
 	XtAppContext context = XtWidgetToApplicationContext((Widget)window->app_data);
 	XtRealizeWidget(window->wnd);
@@ -526,9 +1188,9 @@ void gui_querymenu(gui_info *ui) {
 	}
 }
 
-int gui_font(gui_info *ui, int font_num, const char *font) {
-	memcpy(ui->bar_info->font_names[font_num], font, strlen(font));
-	ui->bar_info->font_names[font_num][strlen(font)] = '\0';
+void gui_font(gui_info *ui, const char *font) {
+	memcpy(ui->bar_info->font_names[0], font, strlen(font));
+	ui->bar_info->font_names[0][strlen(font)] = '\0';
 }
 
 int gui_queryfont(gui_info *ui) {
@@ -588,12 +1250,12 @@ void gui_free(gui_info *ui) {
 	}
 }
 
-int gui_create_menu(gui_info *ui, int num_menu, int numFonts) {
+int gui_menubar(gui_info *ui, int num_menu) {
 	int index = 0;
 	if ((ui->bar_info = (menu_bar_t *)calloc(1, sizeof(menu_bar_t)))) {
 		ui->bar_info->num_menus = num_menu;
 		ui->bar_info->menus = (menu_t *)calloc(1, GetNumMenus(ui->bar_info) * sizeof(menu_t));
-		ui->bar_info->num_fonts = numFonts;
+		ui->bar_info->num_fonts = 1;
 		ui->bar_info->font_lists = (GLuint *)malloc(GetNumFonts(ui->bar_info) * sizeof(GLuint));
 		ui->bar_info->font_info = (XFontStruct *)malloc(GetNumFonts(ui->bar_info) * sizeof(XFontStruct));
 		ui->bar_info->size = (int *)malloc(GetNumFonts(ui->bar_info) * 2 * sizeof(int));
@@ -613,7 +1275,7 @@ int gui_create_menu(gui_info *ui, int num_menu, int numFonts) {
 int gui_handler(gui_info *ui) {
 	int buttoncase, click_x, click_y, error, check;
 	double x_limit, y_limit, x, y;
-	actionbar_t menu[1];
+	ui_t menu[1];
 	glEnable(GL_DEPTH_TEST);
 	while (1) {
 		XNextEvent(ui->dpy, &ui->xev);
@@ -648,7 +1310,7 @@ int gui_handler(gui_info *ui) {
 						ui->bar_info->state = 0;
 						break;
 					case run_command:
-						memset(menu, 0, sizeof(actionbar_t));
+						memset(menu, 0, sizeof(ui_t));
 						menu->wnd = ui->topLevel;
 
 						menuitem_t menu_active = ui->bar_info->menus[GetState(ui->bar_info)]
@@ -746,7 +1408,7 @@ static bool isInside(int x, int y, XRectangle rect) {
 	return true;
 }
 
-int gui_message_box(const char *title, const char *text, const Button *buttons, int numButtons) {
+int gui_message_box(ui_t *app, const char *title, const char *text, const Button *buttons, int numButtons) {
 	// convert the text in list (to draw in multiply lines)
 	char **text_splitted = NULL;
 	int textLines = 0;
@@ -998,6 +1660,12 @@ int gui_window(gui_info *ui, const char *title, const int width, const int heigh
 
 void gui_close(gui_info *ui) {
 	gui_free(ui);
+}
+
+void gui_destroy(ui_t *app) {
+	if (app) {
+		XtDestroyWidget(app->app_data);
+	}
 }
 
 int gui_loop(gui_info *ui) {

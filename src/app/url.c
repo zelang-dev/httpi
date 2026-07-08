@@ -2500,7 +2500,6 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 	HMENU hMenu;
 
 	switch (msg) {
-
 		case WM_CREATE:
 			if ((__argv[1] != NULL) && !strcmp(__argv[1], service_magic_argument)) {
 				static SERVICE_TABLE_ENTRY service_table[2];
@@ -2508,9 +2507,7 @@ static LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
 
 				service_argv[0] = __argv[0];
 				service_argv[1] = NULL;
-
 				start_httpi(1, service_argv);
-
 				memset(service_table, 0, sizeof(service_table));
 				service_table[0].lpServiceName = (LPSTR)g_server_name;
 				service_table[0].lpServiceProc =
@@ -2739,7 +2736,6 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdline, int show) {
 	}
 
 	free_system_info();
-
 	/* Return the WM_QUIT value. */
 	return (int)msg.wParam;
 }
