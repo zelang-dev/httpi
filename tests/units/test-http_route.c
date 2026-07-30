@@ -226,7 +226,7 @@ void main_main(http_ini_t *ctx) {
 
 	http_t *client_conn;
 	const httpi_t *ri;
-	char uri[64], ebuf[100];
+	char uri[260], ebuf[100];
 	char buf[1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 8];
 	const char *expected =
 		"112123123412345123456123456712345678123456789123456789A";
@@ -263,23 +263,23 @@ void main_main(http_ini_t *ctx) {
 	char cmd_buf[256];
 
 	for (i = 0; i < 1000; i++) {
-		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
+		snprintf(uri, sizeof(uri), "/U%u", i);
 		http_route(ctx, uri, request_test_handler, NULL);
 	}
 	for (i = 500; i < 800; i++) {
-		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
+		snprintf(uri, sizeof(uri), "/U%u", i);
 		http_route(ctx, uri, NULL, (void *)1);
 	}
 	for (i = 600; i >= 0; i--) {
-		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
+		snprintf(uri, sizeof(uri), "/U%u", i);
 		http_route(ctx, uri, NULL, (void *)2);
 	}
 	for (i = 750; i <= 1000; i++) {
-		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
+		snprintf(uri, sizeof(uri), "/U%u", i);
 		http_route(ctx, uri, NULL, (void *)3);
 	}
 	for (i = 5; i < 9; i++) {
-		snprintf(uri, sizeof(cmd_buf), "/U%u", i);
+		snprintf(uri, sizeof(uri), "/U%u", i);
 		http_route(ctx, uri, request_test_handler, (void *)(ptrdiff_t)i);
 	}
 

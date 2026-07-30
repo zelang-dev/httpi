@@ -14,7 +14,7 @@ jobs:
     container: quay.io/centos/centos:stream9
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Prepare
         run: |
           dnf install git make cmake gcc gcc-c++ binutils glibc-devel autoconf libtool bison automake libxml2-devel libatomic pkg-config openssl-devel sudo which -y

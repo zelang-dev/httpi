@@ -52,7 +52,7 @@ else()
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} /D USE_DEBUG")
 endif()
 
-find_package(events QUIET)
+find_package(events QUIET CONFIG)
 if(NOT events_FOUND)
     FetchContent_Declare(events
         URL https://github.com/zelang-dev/c-events/archive/refs/heads/main.zip

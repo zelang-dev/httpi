@@ -1,4 +1,5 @@
 #include  "../lib/httpi_internal.h"
+#include <gui.h>
 
 #if defined(_WIN32)
 #include <shlobj.h>
@@ -236,7 +237,7 @@ static void show_usage_and_exit(string_t exeName) {
 	exit(EXIT_FAILURE);
 }
 
-#if defined(_WIN32) || defined(USE_COCOA) || defined(MAIN_C_UNIT_TEST)
+#if defined(_WIN32) || defined(USE_COCOA)
 static string_t config_file_top_comment =
 "# Httpi web server configuration file.\n"
 "# For detailed description of every option, visit\n"
@@ -285,7 +286,6 @@ static string_t get_url_to_first_open_port(http_ini_t *ctx) {
 	return url;
 }
 
-#if defined(ENABLE_CREATE_CONFIG_FILE) || defined(MAIN_C_UNIT_TEST)
 static void create_config_file(const http_ini_t *ctx, string_t path) {
 	const struct ini_option *options;
 	string_t value;
@@ -299,7 +299,7 @@ static void create_config_file(const http_ini_t *ctx, string_t path) {
 		fprintf(fp, "%s", config_file_top_comment);
 		options = http_get_valid_options();
 		for (i = 0; options[i].name != NULL; i++) {
-			value = http_get_option(ctx, options[i].name);
+			value = http_get_option((http_ini_t *)ctx, options[i].name);
 			fprintf(fp,
 				"# %s %s\n",
 				options[i].name,
@@ -308,7 +308,6 @@ static void create_config_file(const http_ini_t *ctx, string_t path) {
 		fclose(fp);
 	}
 }
-#endif
 #endif
 
 static char *sdup(string_t str) {
@@ -2750,103 +2749,75 @@ int main(int argc, char *argv[]) {
 }
 
 #elif __APPLE__ || __MACH__
-/*
-#import <Cocoa/Cocoa.h>
-
-@interface Civetweb : NSObject <NSApplicationDelegate>
--(void)openBrowser;
--(void)shutDown;
-@end
-
-@implementation Civetweb
-- (void)openBrowser {
-	[[NSWorkspace sharedWorkspace]
-		openURL:[NSURL URLWithString:[NSString stringWithUTF8String:
-	get_url_to_first_open_port(
-		g_ctx)] ] ];
+void openBrowser(void) {
+	cocoa_set_with(cocoa_get("NSWorkspace", "sharedWorkspace"),
+		"openURL:", cocoa_send_with((id)objc_getClass("NSURL"),
+			"URLWithString:", (id)cocoa_str(get_url_to_first_open_port(g_ctx))));
 }
-- (void)editConfig {
+
+void editConfig(void) {
 	create_config_file(g_ctx, g_config_file_name);
-	NSString *path = [NSString stringWithUTF8String:g_config_file_name];
-	if (![[NSWorkspace sharedWorkspace]openFile:path
-		withApplication : @"TextEdit"] ) {
-		NSAlert *alert = [[[NSAlert alloc]init] autorelease];
-		[alert setAlertStyle:NSWarningAlertStyle] ;
-		[alert setMessageText:NSLocalizedString(@"Unable to open config file.",
-			"")] ;
-		[alert setInformativeText:path] ;
-		(void)[alert runModal];
+	if (!cocoa_status_with(cocoa_get("NSWorkspace", "sharedWorkspace"),
+		"openFile:withApplication:", (id)cocoa_str(g_config_file_name), (id)cocoa_str("TextEdit"))) {
+		ui_button button = {0};
+		button[0].label = "Ok";
+		gui_message_box(nil, "Unable to open config file.", g_config_file_name, button, 1);
 	}
 }
-- (void)shutDown
-{
-	[NSApp terminate:nil] ;
+
+void shutDown(void) {
+	cocoa_set_with(NSApp, "terminate:", nil);
 }
-@end
-*/
+
 int main(int argc, char *argv[]) {
 	init_server_name();
 	init_system_info();
-	/*start_civetweb(argc, argv);
+	start_httpi(argc, argv);
 
+	cocoa_post("NSAutoreleasePool", "new");
+	cocoa_post("NSApplication", "sharedApplication");
 
-	[NSAutoreleasePool new] ;
-	[NSApplication sharedApplication] ;*/
+	/* Add delegate to process menu item actions */
+	AppDelegate *myDelegate = (AppDelegate *)cocoa_autorelease("AppDelegate");
+	cocoa_set_with(NSApp, "setDelegate:", (id)myDelegate);
 
-	/* Add delegate to process menu item actions
-	Civetweb *myDelegate = [[Civetweb alloc]autorelease];
-	[NSApp setDelegate:myDelegate] ;*/
-
-	/* Run this app as agent
+	/* Run this app as agent*/
 	ProcessSerialNumber psn = {0, kCurrentProcess};
 	TransformProcessType(&psn, kProcessTransformToBackgroundApplication);
-	SetFrontProcess(&psn);*/
+	SetFrontProcess(&psn);
 
-	/* Add status bar menu
-	id menu = [[NSMenu new]autorelease];*/
+	/* Add status bar menu*/
+	id menu = cocoa_send(cocoa_get("NSMenu", "new"), "autorelease");
 
-	/* Add version menu item
-	[menu
-		addItem:[[[NSMenuItem alloc]*/
-					/*initWithTitle:[NSString stringWithFormat:@"%s",
-					   server_name]
-		initWithTitle:[NSString stringWithUTF8String:g_server_name]
-		action : @selector(noexist)
-		keyEquivalent:@""] autorelease] ] ;*/
+	/* Add version menu item*/
+	cocoa_menuitem(menu, nil, g_server_name, "noexist", "");
 
-/* Add configuration menu item
-	[menu addItem:[[[NSMenuItem alloc]initWithTitle:@"Edit configuration"
-		action:@selector(editConfig)
-		keyEquivalent:@""] autorelease] ] ;*/
+	/* Add configuration menu item */
+	cocoa_menuitem_action(menu, nil, "Edit configuration", editConfig, "", nil);
 
-/* Add connect menu item
-	[menu
-		addItem:[[[NSMenuItem alloc]initWithTitle:@"Open web root in a browser"
-		action:@selector(openBrowser)
-		keyEquivalent:@""] autorelease] ] ;*/
+	/* Add connect menu item*/
+	cocoa_menuitem_action(menu, nil, "Open web root in a browser", openBrowser, "", nil);
 
-/* Separator
-	[menu addItem:[NSMenuItem separatorItem] ] ;*/
+	/* Separator*/
+	cocoa_menu_separator(menu);
 
-	/* Add quit menu item
-	[menu addItem:[[[NSMenuItem alloc]initWithTitle:@"Quit"
-		action:@selector(shutDown)
-		keyEquivalent:@"q"] autorelease] ] ;*/
+	/* Add quit menu item*/
+	cocoa_menuitem_action(menu, nil, "Quit", shutDown, "q", nil);
 
-	/* Attach menu to the status bar
-	id item = [[[NSStatusBar systemStatusBar]
-		statusItemWithLength:NSVariableStatusItemLength] retain];
-	[item setHighlightMode:YES] ;
-	[item setImage:[NSImage imageNamed:@"civetweb_22x22.png"] ] ;
-	[item setMenu:menu] ;
-	*/
+	/* Attach menu to the status bar*/
+	id item = cocoa_send(cocoa_sendint_func(cocoa_get("NSStatusBar", "systemStatusBar"),
+		sel_getUid("statusItemWithLength:"), NSVariableStatusItemLength), "retain");
 
-	/* Run the app
-	[NSApp activateIgnoringOtherApps:YES] ;
-	[NSApp run] ;
+	cocoa_set(item, "setHighlightMode:", YES);
+	cocoa_set_with(item, "setImage:", cocoa_get_with("NSImage", "imageNamed:", (id)cocoa_str("url_32x32.png")));
+	cocoa_set_with(item, "setMenu:", menu);
 
-	stop_civetweb();
-	free_system_info();*/
+	/* Run the app*/
+	cocoa_set(NSApp, "activateIgnoringOtherApps:", YES);
+	cocoa_select(NSApp, "run");
+
+	//stop_civetweb();
+	free_system_info();
 
 	return EXIT_SUCCESS;
 }

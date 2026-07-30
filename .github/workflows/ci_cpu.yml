@@ -20,7 +20,7 @@ jobs:
           - target: riscv64
             arch: riscv64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: uraimo/run-on-arch-action@v3
         with:
           arch: ${{ matrix.arch }}
