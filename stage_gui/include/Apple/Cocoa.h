@@ -367,6 +367,7 @@ typedef id(*cocoa_sendany_cb)(id, SEL, void *);
 typedef NSInteger(*cocoa_intpair_cb)(id, SEL, id, id);
 typedef NSInteger(*cocoa_int_cb)(id, SEL);
 typedef NSInteger(*cocoa_sendwithint_cb)(id, SEL, id, NSInteger);
+typedef NSInteger(*cocoa_intwith_cb)(id, SEL, id);
 typedef NSSize(*cocoa_size_cb)(id, SEL);
 typedef NSRect *(*cocoa_rect_cb)(id, SEL);
 typedef NSRange(*cocoa_range_cb)(id, SEL, id, NSInteger);
@@ -456,6 +457,7 @@ C_API cocoa_sendint_cb cocoa_sendint_func;
 C_API cocoa_event_cb cocoa_event_func;
 C_API cocoa_menu_cb cocoa_menu_func;
 C_API cocoa_sendwithint_cb cocoa_sendwithint_func;
+C_API cocoa_intwith_cb cocoa_intwith_func;
 C_API cocoa_range_cb cocoa_range_func;
 
 C_API cocoa_post_cb cocoa_post_func;
@@ -608,6 +610,8 @@ C_API NSRect cocoa_bounds(id window);
 C_API NSEvent cocoa_next_event(id instance, unsigned long mask, id expiration, id mode, BOOL deqFlag);
 
 C_API NSString cocoa_str(const char *text);
+C_API NSInteger cocoa_strlen(NSString str);
+C_API BOOL cocoa_str_regex(NSString stringToEvaluate, const char *regexString);
 C_API BOOL cocoa_str_has(NSString str, char *match);
 C_API NSRange cocoa_str_pos(NSString str, char *match, NSInteger options);
 C_API NSString cocoa_sprintf(const char *fmt, ...);

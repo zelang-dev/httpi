@@ -3,7 +3,7 @@ static volatile gui_info *main_gui_info = NULL;
 static volatile bool main_gui_shutdown = false;
 #if defined(__APPLE__)
 static volatile bool main_apple_menu_ready = false;
-
+BOOL is_field_valid(NSTextField field, ui_field form);
 // This is equivalent to creating a @class with one public variable named 'window'.
 // This is a strong reference to the class of the AppDelegate
 // (same as [AppDelegate class])
@@ -22,6 +22,7 @@ cocoa_sendfloat_cb cocoa_sendfloat_func = (cocoa_sendfloat_cb)objc_msgSend;
 cocoa_sendvariadic_cb cocoa_sendvariadic_func = (cocoa_sendvariadic_cb)objc_msgSend;
 cocoa_sendpair_cb cocoa_sendpair_func = (cocoa_sendpair_cb)objc_msgSend;
 cocoa_sendwithint_cb cocoa_sendwithint_func = (cocoa_sendwithint_cb)objc_msgSend;
+cocoa_intwith_cb cocoa_intwith_func = (cocoa_intwith_cb)objc_msgSend;
 cocoa_range_cb cocoa_range_func = (cocoa_range_cb)objc_msgSend;
 cocoa_sendwithpair_cb cocoa_sendwithpair_func = (cocoa_sendwithpair_cb)objc_msgSend;
 cocoa_sendint_cb cocoa_sendint_func = (cocoa_sendint_cb)objc_msgSend;
@@ -140,8 +141,18 @@ FORCEINLINE NSEvent cocoa_next_event(id instance, unsigned long mask, id expirat
 	return cocoa_event_func(instance, sel_getUid("nextEventMatchingMask:untilDate:inMode:dequeue:"), mask, expiration, mode, deqFlag);
 }
 
+FORCEINLINE BOOL cocoa_str_regex(NSString stringToEvaluate, const char *regexString) {
+	NSPredicate regexPredicate = cocoa_get_with("NSPredicate", "predicateWithFormat:",
+		(id)cocoa_sprintf("SELF MATCHES[cd] %@", regexString));
+	return (BOOL)cocoa_intwith_func(regexPredicate, sel_getUid("evaluateWithObject:"), (id)stringToEvaluate);
+}
+
 FORCEINLINE NSString cocoa_str(const char *text) {
 	return (NSString)cocoa_send_data((id)objc_getClass("NSString"), "stringWithUTF8String:", (void *)text);
+}
+
+FORCEINLINE NSInteger cocoa_strlen(NSString str) {
+	return cocoa_status((id)str, "length");
 }
 
 FORCEINLINE NSString cocoa_sprintf(const char *fmt, ...) {
@@ -359,19 +370,32 @@ static void verify_form(__GUI_MENU__) {
 	for (i = 0; i < numFields; i++) {
 		which = (ui_field)form[i];
 		field = (NSTextField)which.index;
-		id f = cocoa_send(field, "stringValue");
-		char *value = cocoa_tochar((NSString)f);
-		len = strlen(value);
-		if (len > which.max || which.min < len) {
-			cocoa_check(ui->wnd, (NSButton)which.valid, NO);
-			cocoa_set_with(ui->statusLine, "setStringValue:",
-				(id)cocoa_str("Error: length overflow/underflow"));
-			cocoa_set_with(cocoa_send(ui->statusLine, "cell"), "setTextColor:", cocoa_get("NSColor", "redColor"));
-			return;
-		} else {
+		char error[100] = {0};
+		if (is_field_valid(field, which)) {
 			cocoa_check(ui->wnd, (NSButton)which.valid, YES);
 			cocoa_set_with(ui->statusLine, "setStringValue:", (id)cocoa_str(""));
 			cocoa_set_with(cocoa_send((id)which.index, "cell"), "setBackgroundColor:", cocoa_get("NSColor", "greenColor"));
+		} else {
+			cocoa_check(ui->wnd, (NSButton)which.valid, NO);
+			switch (which.kind) {
+			case field_number:
+				snprintf(error, sizeof(error), "Error: number must be between %d or %d digits", which.min, which.max);
+				break;
+			case field_text:
+				snprintf(error, sizeof(error), "Error: length overflow %d or underflow %d", which.max, which.min);
+				break;
+			case field_secret:
+				snprintf(error, sizeof(error), "Error: secret aleast 1 cap, 1 number and minimum %d characters", which.min);
+				break;
+			case field_email:
+				snprintf(error, sizeof(error), "Error: invalid Email");
+				break;
+			}
+
+			cocoa_set_with(ui->statusLine, "setStringValue:",
+				(id)cocoa_str(error));
+			cocoa_set_with(cocoa_send(ui->statusLine, "cell"), "setTextColor:", cocoa_get("NSColor", "redColor"));
+			return;
 		}
 	}
 	ui->app->running = NO;
@@ -529,6 +553,51 @@ FORCEINLINE void cocoa_check(id window, NSButton button, BOOL onOff) {
 	cocoa_set(cocoa_send(window, "contentView"), "setNeedsDisplay:", YES);
 }
 
+FORCEINLINE BOOL isValidEmail(id text) {
+	const char emailRegex[] =
+		"(?:[a-z0-9!#$%\\&'*+/=?\\^_`{|}~-]+(?:\\.[a-z0-9!#$%\\&'*+/=?\\^_`{|}"
+		"~-]+)*|\"(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21\\x23-\\x5b\\x5d-\\"
+		"x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])*\")@(?:(?:[a-z0-9](?:[a-"
+		"z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:25[0-5"
+		"]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-"
+		"9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21"
+		"-\\x5a\\x53-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])+)\\])";
+	return cocoa_str_regex((NSString)text, emailRegex);
+}
+
+BOOL checkPasswordValidity(NSTextField text) {
+	NSString passwordValue = (NSString)cocoa_send((id)text, "stringValue");
+	BOOL capitalResult = cocoa_str_regex(passwordValue, ".*[A-Z]+.*");
+	BOOL smallResult = cocoa_str_regex(passwordValue, ".*[a-z]+.*");
+	BOOL numberResult = cocoa_str_regex(passwordValue, ".*[0-9]+.*");
+
+	return capitalResult && smallResult && numberResult;
+}
+
+FORCEINLINE BOOL isMinLength(NSTextField text, ui_field form) {
+	return (0 == form.min) ? true : (int)cocoa_strlen((NSString)cocoa_send((id)text, "stringValue")) >= form.min;
+}
+
+FORCEINLINE BOOL isMaxLength(NSTextField text, ui_field form) {
+	return (0 == form.max) ? true : (int)cocoa_strlen((NSString)cocoa_send((id)text, "stringValue")) <= form.max;
+}
+
+FORCEINLINE BOOL isEmailValid(NSTextField field, ui_field form) {
+	return form.kind == field_email ? isValidEmail(cocoa_send((id)field, "stringValue")) : true;
+}
+
+FORCEINLINE BOOL isPasswordValid(NSTextField text, ui_field form) {
+	return (form.kind == field_secret) ? checkPasswordValidity(text) : true;
+}
+
+FORCEINLINE BOOL is_field_valid(NSTextField field, ui_field form) {
+	BOOL minimunLengthValidy = isMinLength(field, form);
+	BOOL maximumLengthValidity = isMaxLength(field, form);
+	BOOL emailValidity = isEmailValid(field, form);
+	BOOL passwordValidity = isPasswordValid(field, form);
+	return (minimunLengthValidy && maximumLengthValidity && emailValidity && passwordValidity);
+}
+
 static BOOL should_end_editing(__GUI_MENU__) {
 	(void)selector;
 	gui_info *ui = nil;
@@ -543,26 +612,21 @@ static BOOL should_end_editing(__GUI_MENU__) {
 			break;
 	}
 
-	id f = cocoa_send(field, "stringValue");
-	char *value = cocoa_tochar((NSString)f);
-	fprintf(stderr, "%s == %s\n", value, form[i].value);
 	switch (form[i].kind) {
 		case field_number:
-			is_ready = YES;
+		case field_text:
+			is_ready = isMinLength(field, form[i]) && isMaxLength(field, form[i]);
 			break;
 		case field_email:
-			is_ready = YES;
+			is_ready = isEmailValid(field, form[i]);
 			break;
 		case field_secret:
-			is_ready = YES;
+			is_ready = isPasswordValid(field, form[i]);
 			break;
 		case field_date:
 			is_ready = YES;
 			break;
 		case field_regex:
-			is_ready = YES;
-			break;
-		case field_text:
 			is_ready = YES;
 			break;
 	}
