@@ -644,8 +644,9 @@ C_API void cocoa_menuitem(id menu, id append, const char *name, const char *sele
 C_API void cocoa_menuitem_sub(id menu, const char *name, id sub);
 
 C_API void cocoa_impl_func(const char *class_name, const char *register_name, void *function);
-C_API NSTextField cocoa_text_field(id gui, ui_field_type kind, char *label, char *field, float x, float y, float width);
-C_API NSButton cocoa_form_buttons(id window, char *title, char *action, float x, float y);
+C_API NSTextField cocoa_text_field(id gui, ui_field_type kind, char *label, char *field,
+	float x, float y, float width, uintptr_t tag);
+C_API NSButton cocoa_form_button(id window, char *title, char *action, float x, float y);
 C_API void cocoa_check(id window, NSButton, BOOL onOff);
 
 #define dict(obj, key)	((id)obj), ((char *)(key))

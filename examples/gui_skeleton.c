@@ -274,8 +274,8 @@ void color_box(__GUI_MENU__) {
 void form_prompt(__GUI_MENU__) {
 	gui_info ui = {0};
 	ui_field form[] = {
-			{IDC_FIELD1, field_text, "name", "Free alternative to the Motif XmTextField", 290, 40, 1},
-			{IDC_FIELD2, field_secret, "password", "Fixed Length", 130, 11, 11},
+			{IDC_FIELD1, field_text, "Name", "Free alternative to the Motif XmTextField", 290, 40, 1},
+			{IDC_FIELD2, field_secret, "Password", "Fixed Length", 130, 11, 11},
 			{IDC_FIELD3, field_text, NULL, "No Echo", 90, 6, 4},
 			{IDC_FIELD4, field_text, NULL, "No Pending Delete", 160, 16, 10},
 	};
@@ -324,16 +324,16 @@ int main(int argc, char **argv) {
 	if (gui_window(&ui, "Skeleton", 600, 600, false)
 		&& gui_menubar(&ui, 2)) {
 		menuitem_t items[] = {
-			{ID_FILE_OPEN, "Open ", gui_open_dialog, "o", NULL},
-			{ID_FILE_SAVE, "Save ", gui_save_dialog, "s", NULL},
+			{ID_FILE_OPEN, "Open", gui_open_dialog, "O", NULL},
+			{ID_FILE_SAVE, "Save", gui_save_dialog, "S", NULL},
 			{__GUI_SEPERATOR__},
-			{ID_FILE_FORM, "Form ", form_prompt, "f", NULL},
+			{ID_FILE_FORM, "Form", form_prompt, "F", NULL},
 		};
 
 		menuitem_t items_two[] = {
-			{ID_MODE_ALERT, "Alert Box ", message_box, "a", NULL},
-			{ID_MODE_ARCADE, "Arcade Box ", color_box, "x", NULL},
-			{ID_MODE_KEY, "Key Box ", key_box, "k", NULL},
+			{ID_MODE_ALERT, "Alert Box", message_box, "A", NULL},
+			{ID_MODE_ARCADE, "Arcade Box", color_box, "B", NULL},
+			{ID_MODE_KEY, "Key Box", key_box, "K", NULL},
 		};
 
 		if (!gui_menufont(&ui, lucida)

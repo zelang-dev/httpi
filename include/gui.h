@@ -463,13 +463,14 @@ struct gui_info_s {
 	ui_color_t txtCr, bkCr;
 	/* For passing data to custom `Window` handler routine */
 	void *user_data;
+#if defined(_WIN32) || defined(__APPLE__)
+	ui_t app[1];
+#endif
 #if defined(_WIN32)
-	ui_t *app;
 	WNDCLASSEX wc;
 	MSG msg;
 	HINSTANCE hinst;
 #elif defined(__APPLE__)
-	ui_t app[1];
 	id pool;
 	NSTextField statusLine;
 	Class delegate;

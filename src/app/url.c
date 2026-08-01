@@ -2739,12 +2739,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmdline, int show) {
 	return (int)msg.wParam;
 }
 
-
 /* main() for Windows (Subsystem: Console). */
 int main(int argc, char *argv[]) {
-	(void)argc;
-	(void)argv;
-
 	return WinMain(0, 0, 0, 0);
 }
 

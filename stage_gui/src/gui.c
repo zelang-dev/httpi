@@ -497,7 +497,8 @@ static void gui_draw_rect(id v, SEL s, CGRect r) {
 	CGImageRelease(img);
 }
 
-NSTextField cocoa_text_field(id gui, ui_field_type kind, char *label, char *field, float x, float y, float width) {
+NSTextField cocoa_text_field(id gui, ui_field_type kind, char *label, char *field,
+	float x, float y, float width, uintptr_t tag) {
 	gui_info *ui = (gui_info *)gui;
 	NSTextField text, slabel = nil;
 	if (label) {
@@ -522,10 +523,12 @@ NSTextField cocoa_text_field(id gui, ui_field_type kind, char *label, char *fiel
 	cocoa_set_with(text, "setStringValue:", (id)cocoa_str(field));
 	cocoa_postpairwith_func(cocoa_send(ui->wnd, "contentView"),
 		sel_getUid("addSubview:positioned:relativeTo:"), text, NSWindowAbove, slabel);
+		/* Setup `viewWithTag:` usage */
+	cocoa_set(text, "setTag:", tag);
 	return text;
 }
 
-NSButton cocoa_form_buttons(id window, char *title, char *action, float x, float y) {
+NSButton cocoa_form_button(id window, char *title, char *action, float x, float y) {
 	NSButton button = cocoa_send(cocoa_send_rect(cocoa_alloc("NSButton"), "initWithFrame:", x, y, 80, 25), "autorelease");
 	cocoa_set_with(button, "setTitle:", (id)cocoa_str(title));
 	cocoa_set(button, "setBezelStyle:", NSTexturedSquareBezelStyle);
@@ -668,9 +671,8 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 	for (i = 0; i < numFields; i++) {
 		/* Setup spacing between each `textfield` with `caption/label` */
 		y += spacing;
-		text = cocoa_text_field((id)ui, fill[i].kind, fill[i].caption, fill[i].value, 5, ui->height - y, fill[i].width);
-		/* Setup `viewWithTag:` usage */
-		cocoa_set(text, "setTag:", fill[i].ID);
+		text = cocoa_text_field((id)ui, fill[i].kind, fill[i].caption, fill[i].value, 5,
+			ui->height - y, fill[i].width, fill[i].ID);
 		/* Set what `textShouldEndEditing:` callback notification will receive */
 		cocoa_set_with(text, "setRepresentedObject:", text);
 		/* Store `NSTextField` into provided `Form` for `verify_form` and `should_end_editing`
@@ -690,8 +692,8 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 		fill[i].valid = (void *)check;
 	}
 
-	NSButton button2, button1 = cocoa_form_buttons(ui->wnd, "Confirm", "verify_form:", 136, 25);
-	button2 = cocoa_form_buttons(ui->wnd, "Cancel", "cancel_form:", 215, 25);
+	NSButton button2, button1 = cocoa_form_button(ui->wnd, "Confirm", "verify_form:", 136, 25);
+	button2 = cocoa_form_button(ui->wnd, "Cancel", "cancel_form:", 215, 25);
 
 	/* Setup statusline area in form for `error` feedback */
 	ui->statusLine = cocoa_send(cocoa_send_rect(cocoa_alloc("NSTextField"), "initWithFrame:",
@@ -1042,6 +1044,16 @@ static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 	HMENU hCharacterMenu;
 	menuitem_t *pmyitem;
 	switch (msg) {
+		case WM_ERASEBKGND:
+			{
+				HDC hdc = (HDC)wParam;
+				RECT rc;
+				GetClientRect(hwnd, &rc);
+				HBRUSH brush = CreateSolidBrush(RGB(255, 255, 255)); // white background
+				FillRect(hdc, &rc, brush);
+				DeleteObject(brush);
+				return true; // background erased
+			}
 		case WM_MEASUREITEM:
 			// Retrieve a device context for the main window.
 			hdc = GetDC(hwnd);
@@ -1104,7 +1116,7 @@ static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 				return (LRESULT)0;
 			}
 
-			ExtTextOut(lpdis->hDC, nTextX, nTextY, ETO_OPAQUE,&lpdis->rcItem, pmyitem->item_name,*pcch, NULL);
+			ExtTextOut(lpdis->hDC, nTextX, nTextY, ETO_OPAQUE, &lpdis->rcItem, pmyitem->item_name, *pcch, NULL);
 
 			// Select the previous font back into the device
 			// context.
@@ -1127,20 +1139,25 @@ static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 			PostQuitMessage(0);
 			break;
 		case WM_COMMAND:
-			ui_t menu[1];
 			menuitem_t *menus_active;
 			int i, x, count, which = LOWORD(wParam);
-			for (i = 0; i < ui->bar_info->num_menus; i++) {
-				count = ui->bar_info->menus[i].num_items;
-				menus_active = ui->bar_info->menus[i].items;
-				for (x = 0; x < count; x++) {
-					if (which == menus_active[x].menu_id) {
-						memset(menu, 0, sizeof(ui_t));
-						menu->wnd = ui->wnd;
-						menu->app_data = ui->hinst;
-						menus_active[x].action(menu, menus_active[x].data);
-						return 0;
+			if (ui->bar_info) {
+				for (i = 0; i < ui->bar_info->num_menus; i++) {
+					count = ui->bar_info->menus[i].num_items;
+					menus_active = ui->bar_info->menus[i].items;
+					for (x = 0; x < count; x++) {
+						if (which == menus_active[x].menu_id) {
+							ui_t *app = ui->app;
+							app->wnd = ui->wnd;
+							app->app_data = ui->hinst;
+							app->gui = ui;
+							menus_active[x].action(app, menus_active[x].data);
+							return 0;
+						}
 					}
+
+					if (!ui->bar_info)
+						break;
 				}
 			}
 		default:
@@ -1152,21 +1169,6 @@ static LRESULT CALLBACK gui_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 static LRESULT CALLBACK gui_wndproc_arcade(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	gui_info *ui = (gui_info *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 	switch (msg) {
-		case WM_SIZE: {
-				RECT rect;
-				GetClientRect(hwnd, &rect);
-				int new_width = rect.right - rect.left;
-				int new_height = rect.bottom - rect.top;
-
-				if (new_width != ui->width || new_height != ui->height) {
-					uint32_t *new_buf = realloc(ui->buf, new_width * new_height * sizeof(uint32_t));
-					if (!new_buf) break;
-
-					ui->buf = new_buf;
-					ui->width = new_width;
-					ui->height = new_height;
-				}
-			} break;
 		case WM_PAINT: {
 				PAINTSTRUCT ps;
 				HDC hdc = BeginPaint(hwnd, &ps);
@@ -1228,17 +1230,76 @@ void gui_file(__GUI_FILE__) {
 				DWORD dwRead;
 				if (ReadFile(hFile, pszFileText, dwFileSize, &dwRead, NULL)) {
 					pszFileText[dwFileSize] = 0; // Add null terminator
-					HWND hEdit = CreateWindowEx(WS_EX_RIGHTSCROLLBAR, TEXT("edit"), file,
+					HWND hEdit = CreateWindowExA(WS_EX_RIGHTSCROLLBAR, TEXT("edit"), file,
 						WS_VISIBLE | WS_POPUPWINDOW | WS_CHILD | WS_SIZEBOX |
-						WS_OVERLAPPEDWINDOW | WS_HSCROLL | WS_VSCROLL | ES_MULTILINE,
-						150, 150, 565, 320, edit->wnd, NULL, edit->app_data, NULL);
+						WS_OVERLAPPEDWINDOW | WS_VSCROLL | ES_MULTILINE,
+						150, 150, 565, 320, NULL, NULL, NULL, NULL);
 					SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
-					SetWindowText(hEdit, pszFileText);
+					if (SetWindowText(hEdit, pszFileText)) {
+						self->app_array = (void **)hEdit;
+					}
 				}
 				GlobalFree(pszFileText);
 			}
 		}
 		CloseHandle(hFile);
+	}
+}
+
+BOOL gui_save(__GUI_FILE__) {
+	HANDLE hFile;
+	BOOL bSuccess = FALSE;
+
+	hFile = CreateFile(file, GENERIC_WRITE, 0, NULL,
+		CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile != INVALID_HANDLE_VALUE) {
+		DWORD dwTextLength;
+
+		dwTextLength = GetWindowTextLength((HWND)self->app_array);
+		// No need to bother if there's no text.
+		if (dwTextLength > 0) {
+			LPSTR pszText;
+			DWORD dwBufferSize = dwTextLength + 1;
+
+			pszText = GlobalAlloc(GPTR, dwBufferSize);
+			if (pszText != NULL) {
+				if (GetWindowText((HWND)self->app_array, pszText, dwBufferSize)) {
+					DWORD dwWritten;
+
+					if (WriteFile(hFile, pszText, dwTextLength, &dwWritten, NULL))
+						bSuccess = TRUE;
+				}
+				GlobalFree(pszText);
+			}
+		}
+		CloseHandle(hFile);
+	}
+	return bSuccess;
+}
+
+void gui_save_dialog(__GUI_MENU__) {
+	int ok;
+	OPENFILENAME ofn;
+	static char result_buf[2048];
+	result_buf[0] = '\0';
+
+	memset(&ofn, 0, sizeof(OPENFILENAME));
+	ofn.hwndOwner = self->wnd ? self->wnd : NULL;
+	ofn.hInstance = self->app_data ? self->app_data : NULL;
+	ofn.lStructSize = sizeof(ofn);
+	ofn.lpstrFilter = TEXT("All files(*.*)\0*.*\0");//(opt);
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFile = result_buf;
+	ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
+	ofn.nMaxFile = sizeof(result_buf) - 1;
+	ofn.lpstrInitialDir = "./";
+	ofn.lpstrTitle = "Select File";
+	ofn.lpstrDefExt = "*.*";
+	ok = GetSaveFileName(&ofn);
+	if (ok && !data) {
+		gui_save(self, ofn.lpstrFile);
+	} else if (ok && data) {
+		((ui_file_cb)data)(self, ofn.lpstrFile);
 	}
 }
 
@@ -1255,7 +1316,7 @@ void gui_open_dialog(__GUI_MENU__) {
 	ofn.lpstrFilter = TEXT("All files(*.*)\0*.*\0");//(opt);
 	ofn.nFilterIndex = 1;
 	ofn.lpstrFile = result_buf;
-	ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+	ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
 	ofn.nMaxFile = sizeof(result_buf) - 1;
 	ofn.lpstrInitialDir = "./";
 	ofn.lpstrTitle = "Select File";
@@ -1351,17 +1412,46 @@ static LRESULT CALLBACK gui_wndproc_form(HWND hwnd, UINT msg, WPARAM wParam, LPA
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+HWND windows_text_field(gui_info *ui, ui_field_type kind, char *label, char *field,
+	float x, float y, float width, uintptr_t tag) {
+	int estyle = WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP;
+	HWND hEdit;
+	if (label) {
+		hEdit = CreateWindow("Static", label, WS_CHILD | WS_VISIBLE | SS_LEFT, x + 1, y - 24,
+			width, 11, ui->wnd, (HMENU)ID_GUI_STATIC, NULL, NULL);
+		SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+	}
+
+	hEdit = CreateWindow("Edit", field, (kind == field_secret ? estyle | ES_PASSWORD : estyle), x, (y - 10),
+			width, 21, ui->wnd, (HMENU)(tag), NULL, NULL);
+	return hEdit;
+}
+
+HWND windows_form_button(gui_info *ui, char *title, intptr_t action, float x, float y) {
+	HWND button = CreateWindow("Button", title, WS_VISIBLE | WS_CHILD | BS_PUSHLIKE | WS_TABSTOP, x, y, 80, 25,
+		ui->wnd, (HMENU)(action), NULL, NULL);
+	SendMessage(button, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+	return button;
+}
+
 int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form_cb verify) {
-	int i, x = 0, spacing = 30;
+	int i, max_width = 0, y = 0, spacing = 35;
 	ui_t *app = ui->app;
 	HWND hEdit, pWnd = app->wnd;
 
 	ui->hinst = app->app_data;
 	ui->title = title;
-	ui->width = 320;
-	ui->height = 300;
+
+	/* calculate form width based off longest field width */
+	for (i = 0; i < numFields; i++) {
+		if (fill[i].width > max_width)
+			max_width = fill[i].width;
+	}
+
+	ui->width = max_width + 28;
+	/* calculate form height based off number of text fields provided */
+	ui->height = numFields * 65;
 	ui->buf = NULL;
-	ui->app = app;
 	ui->txtCr = RGB(255, 0, 0);
 	ui->bkCr = RGB(0, 0, 0);
 	ui->user_data = verify;
@@ -1379,35 +1469,23 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 	ui->wc.lpszClassName = "Edit control";
 	RegisterClassEx(&ui->wc);
 
-	if ((ui->wnd = CreateWindowEx(WS_EX_NOACTIVATE | WS_EX_DLGMODALFRAME,
+	if ((ui->wnd = CreateWindowEx((WS_EX_NOACTIVATE | WS_EX_DLGMODALFRAME) & ~WS_SIZEBOX,
 		ui->wc.lpszClassName, ui->title,
-		WS_CAPTION | WS_POPUP | WS_VISIBLE | WS_CHILD | WS_SYSMENU,
-		200, 200,
+		WS_CAPTION | WS_POPUP | WS_VISIBLE | WS_CHILD | WS_SYSMENU,	200, 200,
 		ui->width, ui->height, pWnd, NULL, ui->hinst, NULL)) == NULL)
 		return 0;
 
 	SetWindowLongPtr(ui->wnd, GWLP_USERDATA, (LONG_PTR)ui);
 	for (i = 0; i < numFields; i++) {
-		x += spacing;
-		if (fill[i].caption != NULL) {
-			hEdit = CreateWindow("Static", fill[i].caption, WS_CHILD | WS_VISIBLE | SS_LEFT, 6, x - 10,
-				fill[i].width, 11, ui->wnd, (HMENU)ID_GUI_STATIC, NULL, NULL);
-			SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
-		}
+		y += spacing;
+		windows_text_field(ui, fill[i].kind, fill[i].caption, fill[i].value,
+			5, y, fill[i].width, fill[i].ID);
 
-		CreateWindow("Edit", fill[i].value, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP, 5, (x + 5),
-			fill[i].width, 21, ui->wnd, (HMENU)(fill[i].ID), NULL, NULL);
-		CreateWindow("Button", "", WS_CHILD | WS_VISIBLE | BS_CHECKBOX | BS_TEXT | BS_FLAT | BS_VCENTER, fill[i].width - 12, (x + 9),
-			12, 12, ui->wnd, (HMENU)(ID_GUI_ERROR + fill[i].ID), NULL, NULL);
+		CreateWindow("Button", "", WS_CHILD | WS_VISIBLE | BS_CHECKBOX | BS_TEXT | BS_FLAT | BS_VCENTER, fill[i].width - 12, (y - 6), 12, 12, ui->wnd, (HMENU)(ID_GUI_ERROR + fill[i].ID), NULL, NULL);
 	}
 
-	hEdit = CreateWindow("Button", "Confirm", WS_VISIBLE | WS_CHILD | BS_PUSHLIKE | WS_TABSTOP, 135, (ui->height - 83), 80, 25,
-		ui->wnd, (HMENU)(ID_GUI_CONFIRM), NULL, NULL);
-	SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
-
-	hEdit = CreateWindow("Button", "Cancel", WS_VISIBLE | WS_CHILD | BS_PUSHLIKE | WS_TABSTOP, 220, (ui->height - 83), 80, 25,
-		ui->wnd, (HMENU)(ID_GUI_CANCEL), NULL, NULL);
-	SendMessage(hEdit, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), MAKELPARAM(FALSE, 0));
+	windows_form_button(ui, "Confirm", ID_GUI_CONFIRM, 130, (ui->height - 83));
+	windows_form_button(ui, "Cancel", ID_GUI_CANCEL, 215, (ui->height - 83));
 
 	hEdit = CreateWindow(STATUSCLASSNAME, "", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
 		0, ui->height, (ui->width), 5, ui->wnd, (HMENU)ID_GUI_STATUS, NULL, NULL);
@@ -1426,7 +1504,7 @@ int gui_window(gui_info *ui, const char *title, int width, int height, int buffe
 	ui->title = title;
 	ui->width = (int)width;
 	ui->height = (int)height;
-	if (buffered) {
+	if (buffered == true) {
 		ui->buf = malloc(ui->width * ui->height * sizeof(uint32_t));
 		if (!ui->buf)
 			return 0;
@@ -1444,7 +1522,7 @@ int gui_window(gui_info *ui, const char *title, int width, int height, int buffe
 	RegisterClassEx(&ui->wc);
 
 	if ((ui->wnd = CreateWindowEx((!buffered ? WS_EX_WINDOWEDGE : (WS_EX_CLIENTEDGE | WS_EX_TOPMOST)),
-		ui->title, ui->title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+		ui->title, ui->title, (buffered ? WS_OVERLAPPEDWINDOW & ~WS_SIZEBOX & ~WS_MAXIMIZEBOX : WS_OVERLAPPEDWINDOW), CW_USEDEFAULT, CW_USEDEFAULT,
 		ui->width, ui->height, NULL, NULL, ui->hinst, NULL)) == NULL)
 		return 0;
 
@@ -1465,7 +1543,18 @@ int gui_menu(gui_info *ui, int num_menu, menuitem_t *items, int number_items, in
 	if (menu->hMenu) {
 		for (r = 0; r < number_items; r++) {
 			// add menu items
-			AppendMenu(menu->hMenu, MF_STRING, items[r].menu_id, items[r].item_name);
+			if (items[r].item_name == NULL && items[r].action == NULL) {
+				AppendMenu(menu->hMenu, MF_SEPARATOR, 0, NULL);
+			} else {
+				if (items[r].alphaKey != NULL) {
+					char alphaKey[65] = {0};
+					snprintf(alphaKey, sizeof(alphaKey), "%s\tCtrl+%s", items[r].item_name, items[r].alphaKey);
+					AppendMenu(menu->hMenu, MF_STRING, items[r].menu_id, alphaKey);
+					RegisterHotKey(ui->wnd, items[r].menu_id, MOD_CONTROL, items[r].alphaKey[0]);
+				} else {
+					AppendMenu(menu->hMenu, MF_STRING, items[r].menu_id, items[r].item_name);
+				}
+			}
 		}
 		AppendMenu(ui->bar_info->hMenubar, MF_POPUP, (UINT_PTR)menu->hMenu, name);
 
@@ -1692,8 +1781,11 @@ void gui_close(gui_info *ui) {
 			for (i = 0; i < ui->bar_info->num_menus; i++) {
 				count = ui->bar_info->menus[i].num_items;
 				menuitem = ui->bar_info->menus[i].items;
-				for (x = 0; x < count; x++)
+				for (x = 0; x < count; x++) {
 					DeleteObject(menuitem[i].hfont);
+					if (menuitem[i].alphaKey != NULL)
+						UnregisterHotKey(ui->wnd, menuitem[i].menu_id);
+				}
 				DestroyMenu(ui->bar_info->menus[i].hMenu);
 			}
 			free(ui->bar_info->menus);
@@ -1726,6 +1818,9 @@ int gui_loop(gui_info *ui) {
 
 void gui_active(gui_info ui) {
 	gui_handler(&ui);
+	//while (gui_loop(&ui) == 0) {
+		//UpdateWindow(ui.wnd);
+	//}
 }
 
 void gui_destroy(gui_info ui) {
@@ -1756,7 +1851,7 @@ static void gui_querymenu(gui_info *ui) {
 	}
 
 	DrawMenuBar(ui->wnd);
-	ui->bar_info->bar_ready = YES;
+	ui->bar_info->bar_ready = true;
 }
 
 int gui_menufont(gui_info *ui, const char *font) {
