@@ -1,144 +1,6 @@
 
 
 #include <gui.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-
-#ifdef __linux__
-
-void TestCallback(Widget w, XtPointer client, XtPointer call) {
-	TextFieldReturnStruct *ret;
-	int count;
-	char *str, *s, *val;
-
-	ret = (TextFieldReturnStruct *)call;
-	printf("ret->string=%s\n", ret->string);
-	str = TextFieldGetString(w);
-	printf("TEXT: item=%s\n", str);
-	s = str;
-	while (*s)
-		*s++ = '*';
-	TextFieldSetString(w, str);
-	TextFieldInsert(w, 4, "4");
-	TextFieldReplace(w, 8, 10, "XXX");
-	TextFieldSetEditable(w, True);
-	TextFieldSetSelection(w, 5, 10, 0);
-	XtVaGetValues(w, XtNstring, &val, NULL);
-	printf("GetValues: %s\n", val);
-	XtFree(str);
-}
-
-void EchoCallback(Widget w, XtPointer client, XtPointer call) {
-	TextFieldReturnStruct *ret = (TextFieldReturnStruct *)call;
-	TextFieldSetEditable(w, True);
-	printf("ret->string=%s\n", ret->string);
-}
-
-void valueCB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldReturnStruct *ret = (TextFieldReturnStruct *)call_data;
-	TextFieldSetEditable(w, True);
-	printf("changed: string = %s\n", ret->string);
-}
-
-void focusCB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldReturnStruct *ret = (TextFieldReturnStruct *)call_data;
-	printf("focus in, string=%s\n", ret->string);
-}
-
-void losefocusCB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldVerifyStruct *ret = (TextFieldVerifyStruct *)call_data;
-	printf("focus out, text=%x\n", ret->text);
-}
-
-void gain1CB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldReturnStruct *ret = (TextFieldReturnStruct *)call_data;
-	printf("gain primary, string=%s\n", ret->string);
-}
-
-void lose1CB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldReturnStruct *ret = (TextFieldReturnStruct *)call_data;
-	printf("gain primary, string=%s\n", ret->string);
-}
-
-void modifyCB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldVerifyStruct *ret = (TextFieldVerifyStruct *)call_data;
-	printf("modify, text=%x\n", ret->text);
-	if (ret->text != NULL) {
-		printf("length=%d\n", ret->text->length);
-		if (ret->text->ptr[0] == ',')
-			ret->doit = False;
-	}
-}
-
-void motionCB(Widget w, XtPointer client, XtPointer call_data) {
-	TextFieldVerifyStruct *ret = (TextFieldVerifyStruct *)call_data;
-	printf("move, text=%x\n", ret->text);
-	if (ret->newInsert > ret->curInsert)
-		ret->doit = False;
-}
-
-void form_prompt(ui_t *formfield, void *data) {
-	char *text = "Free alternative to the Motif XmTextField";
-	Widget form = XtVaCreateManagedWidget("box", boxWidgetClass, formfield->wnd, 0);
-	Widget t1 = XtVaCreateManagedWidget("variablewidth", textfieldWidgetClass, form,
-		XtNwidth, 300,
-		XtNstring, text,
-		XtNinsertPosition, 100,
-		XtNtop, XtChainTop,
-		XtNleft, XtChainLeft,
-		XtNright, XtChainRight,
-		NULL);
-
-	XtAddCallback(t1, XtNactivateCallback, EchoCallback, (XtPointer)NULL);
-	XtAddCallback(t1, XtNvalueChangedCallback, valueCB, NULL);
-	XtAddCallback(t1, XtNfocusCallback, focusCB, NULL);
-	XtAddCallback(t1, XtNlosingFocusCallback, losefocusCB, NULL);
-	XtAddCallback(t1, XtNgainPrimaryCallback, gain1CB, NULL);
-	XtAddCallback(t1, XtNlosePrimaryCallback, lose1CB, NULL);
-	XtAddCallback(t1, XtNmodifyVerifyCallback, modifyCB, NULL);
-	XtAddCallback(t1, XtNmotionVerifyCallback, motionCB, NULL);
-	Widget t2 = XtVaCreateManagedWidget("monospaced", textfieldWidgetClass, form,
-		XtNstring, "Fixed Length",
-		XtNinsertPosition, 0,
-		XtNlength, 16,
-		XtNbottom, XtChainBottom,
-		XtNleft, XtChainLeft,
-		XtNright, XtChainRight,
-		XtNfromVert, t1,
-		NULL);
-	XtAddCallback(t2, XtNactivateCallback, EchoCallback, (XtPointer)NULL);
-	t2 = XtVaCreateManagedWidget("monospaced", textfieldWidgetClass, form,
-		XtNstring, "No Echo",
-		XtNecho, True,
-		XtNinsertPosition, 0,
-		XtNbottom, XtChainBottom,
-		XtNleft, XtChainLeft,
-		XtNright, XtChainRight,
-		XtNfromVert, t2,
-		NULL);// gui_skeleton
-	XtAddCallback(t2, XtNactivateCallback, EchoCallback, (XtPointer)NULL);
-	t2 = XtVaCreateManagedWidget("default", textfieldWidgetClass, form,
-		XtNstring, "No Pending Delete",
-		XtNpendingDelete, False,
-		XtNinsertPosition, 0,
-		XtNbottom, XtChainBottom,
-		XtNleft, XtChainLeft,
-		XtNright, XtChainRight,
-		XtNfromVert, t2,
-		NULL);
-	TextFieldSetEditable(t1, True);
-	XtAddCallback(t2, XtNactivateCallback, EchoCallback, (XtPointer)NULL);
-
-	formfield->app_data = (void *)form;
-	formfield->name = "Form Fill";
-	gui_active(formfield);
-	gui_destroy(formfield);
-}
-
-#endif
 
 #define W 400
 #define H 400
@@ -290,7 +152,6 @@ void message_box(__GUI_MENU__) {
 	char lang_bt_eng[] = "English";
 
 	buttons[0].label = lang_bt_eng;
-	buttons[0].result = 1;
 	int res = gui_message_box(self, "Language",
 		"Please choose a language.", buttons, 1);
 	printf("messageBox return %d\n", res);
@@ -337,8 +198,8 @@ int main(int argc, char **argv) {
 		};
 
 		if (!gui_menufont(&ui, lucida)
-			|| !gui_menu(&ui, 0, items, 4, 1, " File")
-			|| !gui_menu(&ui, 1, items_two, 3, 2, " Mode")) {
+			|| !gui_menu(&ui, 0, items, 4, 1, "File")
+			|| !gui_menu(&ui, 1, items_two, 3, 2, "Mode")) {
 			error = -2;
 		}
 

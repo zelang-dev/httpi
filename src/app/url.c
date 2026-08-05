@@ -1,5 +1,7 @@
 #include  "../lib/httpi_internal.h"
+#undef in
 #include <gui.h>
+#define in ,
 
 #if defined(_WIN32)
 #include <shlobj.h>

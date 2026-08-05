@@ -119,8 +119,8 @@
 #define	XtCClickTime	"ClickTime"
 #endif
 
-typedef struct _FileSelectClassRec	*FileSelectWidgetClass;
-typedef struct _FileSelectRec	*FileSelectWidget;
+typedef struct _FileSelectClassRec *FileSelectWidgetClass;
+typedef struct _FileSelectRec *FileSelectWidget;
 
 extern WidgetClass fileSelectWidgetClass;
 
@@ -129,38 +129,38 @@ _XFUNCPROTOBEGIN
 #if	NeedFunctionPrototypes
 
 extern	void	FileSelectSet(
-    Widget	fileSelect,
-    String	directory,
-    String	filter,
-    String	filename
-) ;
+	Widget	fileSelect,
+	String	directory,
+	String	filter,
+	String	filename
+);
 
 extern void FileSelectGetFilename(
-    Widget,		/* fileSelect */
-    String		/* result */
+	Widget,		/* fileSelect */
+	String		/* result */
 );
 
 extern	Widget	FileSelectCreateWindow(
-    String	name,		/* file select widget name */
-    Widget	parent,		/* parent window shell */
-    XtCallbackProc cb,		/* optional callback proc */
-    XtPointer	client		/* optional callback data */
-) ;
+	String	name,		/* file select widget name */
+	Widget	parent,		/* parent window shell */
+	XtCallbackProc cb,		/* optional callback proc */
+	XtPointer	client		/* optional callback data */
+);
 
-extern	void	FileSelectDestroyWindow( Widget fileSelect ) ;
-extern	void	FileSelectPopup( Widget fileSelect ) ;
-extern	void	FileSelectPopdown( Widget fileSelect ) ;
-extern	Widget	FileSelectParent( Widget fileSelect ) ;
+extern	void	FileSelectDestroyWindow(Widget fileSelect);
+extern	void	FileSelectPopup(Widget fileSelect);
+extern	void	FileSelectPopdown(Widget fileSelect);
+extern	Widget	FileSelectParent(Widget fileSelect);
 
 #else
 
-extern	void	FileSelectSet() ;
-extern	String	FileSelectGetFilename() ;
-extern	Widget	FileSelectCreateWindow() ;
-extern	void	FileSelectDestroyWindow() ;
-extern	void	FileSelectPopup() ;
-extern	void	FileSelectPopdown() ;
-extern	Widget	FileSelectParent() ;
+extern	void	FileSelectSet();
+extern	String	FileSelectGetFilename();
+extern	Widget	FileSelectCreateWindow();
+extern	void	FileSelectDestroyWindow();
+extern	void	FileSelectPopup();
+extern	void	FileSelectPopdown();
+extern	Widget	FileSelectParent();
 
 #endif	/* NeedFunctionPrototypes */
 

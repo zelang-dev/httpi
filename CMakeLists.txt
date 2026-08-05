@@ -101,7 +101,10 @@ if(APPLE)
 	target_link_libraries(gui ${COCOA_LIBRARY})
 else()
 	if(WIN32)
-		add_library(gui ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c)
+		add_library(gui
+			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c
+			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/re.c
+		)
 		target_link_libraries(gui gdi32 comctl32 )
 	else()
 		find_package(X11 REQUIRED COMPONENTS Xmu Xt)
@@ -109,6 +112,7 @@ else()
 		find_package(OpenGL REQUIRED COMPONENTS GLX)
 		add_library(gui
 			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c
+			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/re.c
 			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/TextField.c
 			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/FileSelect.c
 			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/Gridbox.c)

@@ -57,10 +57,10 @@
   gridx, gridy		position of child in grid.  Upper-left cell is 0,0
   gridWidth,gridHeight	size of child in cells.
   fill			"none", "width", "height" or "both"
-  			(also: "fillnone", "fillwidth", "horizontal", "x",
+			(also: "fillnone", "fillwidth", "horizontal", "x",
 			"fillheight", "vertical", "y", "fillboth", "all", "xy")
   gravity		position of child within cell when cell is larger.
-  			See <X11/X.h> for list.
+			See <X11/X.h> for list.
   weightx,weighty	effects how excess space is allocated to cells
   margin		margin around child within cell
 
@@ -91,19 +91,19 @@
 #endif
 
 
-typedef	unsigned int	FillType ;
+typedef	unsigned int	FillType;
 #define	FillNone	0
 #define	FillWidth	1
 #define	FillHeight	2
 #define	FillBoth	(FillWidth|FillHeight)
 
-typedef	struct _GridboxClassRec	*GridboxWidgetClass ;
-typedef	struct _GridboxRec	*GridboxWidget ;
+typedef	struct _GridboxClassRec *GridboxWidgetClass;
+typedef	struct _GridboxRec *GridboxWidget;
 
-extern	WidgetClass	gridboxWidgetClass ;
+extern	WidgetClass	gridboxWidgetClass;
 
 _XFUNCPROTOBEGIN
 
 _XFUNCPROTOEND
- 
+
 #endif /* _Gridbox_h */

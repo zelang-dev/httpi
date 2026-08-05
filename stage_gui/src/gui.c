@@ -1,6 +1,75 @@
 #include <gui.h>
 static volatile gui_info *main_gui_info = NULL;
 static volatile bool main_gui_shutdown = false;
+
+#if defined(__linux__) || defined(_WIN32_)
+#	include "re.h"
+#endif
+
+FORCEINLINE size_t str_length(ui_form_t field) {
+#if __APPLE__
+	return cocoa_strlen((NSString)cocoa_send((id)field, "stringValue"));
+#elif defined(__linux__)
+	return strlen(TextFieldGetString(field));
+#else
+	return GetWindowTextLength(field);
+#endif
+}
+
+FORCEINLINE ui_bool str_is_regex(const char *pattern, ui_str_t match) {
+#if __APPLE__
+	return cocoa_str_regex(match, pattern);
+#else
+	int length = 0;
+	return re_match(pattern, (const char *)match, &length) > 0;
+#endif
+}
+
+FORCEINLINE ui_bool is_ValidEmail(ui_str_t text) {
+	const char emailRegex[] =
+		"(?:[a-z0-9!#$%\\&'*+/=?\\^_`{|}~-]+(?:\\.[a-z0-9!#$%\\&'*+/=?\\^_`{|}"
+		"~-]+)*|\"(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21\\x23-\\x5b\\x5d-\\"
+		"x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])*\")@(?:(?:[a-z0-9](?:[a-"
+		"z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:25[0-5"
+		"]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-"
+		"9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21"
+		"-\\x5a\\x53-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])+)\\])";
+	return str_is_regex(emailRegex, text);
+}
+
+ui_bool check_PasswordValidity(ui_form_t field) {
+	ui_field_str(passwordValue, field);
+	ui_bool capitalResult = str_is_regex(".*[A-Z]+.*", passwordValue);
+	ui_bool smallResult = str_is_regex(".*[a-z]+.*", passwordValue);
+	ui_bool numberResult = str_is_regex(".*[0-9]+.*", passwordValue);
+
+	return capitalResult && smallResult && numberResult;
+}
+
+FORCEINLINE ui_bool is_MinLength(ui_form_t text, ui_field form) {
+	return (0 == form.min) ? (ui_bool)true : (int)str_length(text) >= form.min;
+}
+
+FORCEINLINE ui_bool is_MaxLength(ui_form_t text, ui_field form) {
+	return (0 == form.max) ? (ui_bool)true : (int)str_length(text) <= form.max;
+}
+
+FORCEINLINE ui_bool is_EmailValid(ui_form_t field, ui_field form) {
+	ui_field_str(value, field);
+	return form.kind == field_email ? is_ValidEmail(value) : (ui_bool)true;
+}
+
+FORCEINLINE ui_bool is_PasswordValid(ui_form_t text, ui_field form) {
+	return (form.kind == field_secret) ? check_PasswordValidity(text) : (ui_bool)true;
+}
+
+FORCEINLINE ui_bool str_field_valid(ui_form_t field, ui_field form) {
+	ui_bool minimunLengthValidly = is_MinLength(field, form);
+	ui_bool maximumLengthValidity = is_MaxLength(field, form);
+	ui_bool emailValidity = is_EmailValid(field, form);
+	ui_bool passwordValidity = is_PasswordValid(field, form);
+	return (minimunLengthValidly && maximumLengthValidity && emailValidity && passwordValidity);
+}
 #if defined(__APPLE__)
 static volatile bool main_apple_menu_ready = false;
 BOOL is_field_valid(NSTextField field, ui_field form);
@@ -357,7 +426,7 @@ static FORCEINLINE void cancel_form(__GUI_MENU__) {
 	cocoa_select(ui->app->wnd, "close");
 }
 
-static void verify_form(__GUI_MENU__) {
+static void verify_form(__GUI_FIELD__) {
 	(void)data;
 	(void)selector;
 	gui_info *ui = nil;
@@ -546,6 +615,7 @@ FORCEINLINE NSView cocoa_content_view(id window) {
 FORCEINLINE NSRect cocoa_frame(id window) {
 	return *(NSRect*)cocoa_send(cocoa_send(window, "contentView"), "frame");
 }
+
 FORCEINLINE NSRect cocoa_bounds(id window) {
 	return *(NSRect*)cocoa_send(cocoa_send(window, "contentView"), "bounds");
 }
@@ -677,7 +747,7 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 		cocoa_set_with(text, "setRepresentedObject:", text);
 		/* Store `NSTextField` into provided `Form` for `verify_form` and `should_end_editing`
 		 validation process */
-		fill[i].index = (void *)text;
+		fill[i].index = text;
 
 		/* Setup area for each `textfield` for immediate validation,
 		 This needs `REDOING` it's simplier to make check box,
@@ -1313,7 +1383,7 @@ void gui_open_dialog(__GUI_MENU__) {
 	ofn.hwndOwner = self->wnd ? self->wnd : NULL;
 	ofn.hInstance = self->app_data ? self->app_data : NULL;
 	ofn.lStructSize = sizeof(ofn);
-	ofn.lpstrFilter = TEXT("All files(*.*)\0*.*\0");//(opt);
+	ofn.lpstrFilter = TEXT("All files(*.*)\0*.*\0");
 	ofn.nFilterIndex = 1;
 	ofn.lpstrFile = result_buf;
 	ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
@@ -1885,25 +1955,34 @@ int gui_handler(gui_info *ui) {
 	return (int)ui->msg.wParam;
 }
 #else
+// window icon
+#include "../../../examples/resources/icon_32x32.xpm"
+static char *Xt_menu_seperator = " _____ ";
+static char *fallback[] = {
+  "*variablewidth*font: -adobe-helvetica-medium-r-normal--*-120-*",
+  "*monospaced*font: -*-courier-medium-r-*-*-14-*-*-*-*-*-*",
+  "<Message>WM_PROTOCOLS: WMProtocols()\n",
+  NULL
+};
 
 #define GetNumFonts(X) 		X->num_fonts
-#define LineHeight(X,Y,Z) 	((double)(X->size[2]+X->size[3])*(Y-Z))/(double)X->gwa.height
+#define LineHeight(X,Y,Z) 	((double)(X->size[1]+X->size[2])*(Y-Z))/(double)X->gwa.height
 #define MenuName(X,Y) 		X->menus[Y].menu_name
 #define MenuStart(X,Y) 		x_left+(X->menus[Y].x_start/(double)X->gwa.width)*(x_right-x_left)
 #define MenuWidth(X,Y) 		((double)X->menus[Y].width/(double)window_info->gwa.width)*(x_right-x_left)
 #define GetState(X) 		(X->state-1)
 
-#define x_left -1
+#define x_left 2
 #define x_right 8.2
 #define y_bot -1
-#define y_top 17
+#define y_top 34
 #define left_click Button1
 #define right_click Button3
 #define open_menu 1
 #define close_menu 3
 #define run_command 4
 #define left_menu_padding 10
-#define top_menu_padding 0.1
+#define top_menu_padding 0.2
 
 struct Dimensions {
 	//window
@@ -1933,6 +2012,87 @@ typedef struct ButtonData {
 //these values can be changed to whatever you prefer
 struct Dimensions dim = {400, 150, 5, 40, 25, 10, 30, 30, 20, 75, 25, 8};
 
+typedef struct XPMstruct {
+	char *pixdata;
+	int width, height;
+} XPMstruct;
+
+//not the colour-depth, but the representation in memory
+#define XPM_DEPTH 32
+
+//fallback when no background-colour is given for transparency-supported XPM
+#define TRANSPCOLOR 0x808080
+
+//only suitable for XPMs with around max. 50 colours (single-character colour-lookups)
+//max. 64-colour XPMs are supported! (one base64 char/colour)
+static XPMstruct XPMtoPixels(char *source[], unsigned long bgcol) {
+	int i, j, k, sourceindex, pixdataindex, width,
+		height, colours, charpix, transpchar = 0xff;
+	unsigned int colr[256], colg[256], colb[256];
+	unsigned char colchar[256], colcode, colindex,
+		transpr = (bgcol & 0xFF0000) / 65536,
+		transpg = (bgcol & 0xFF00) / 256,
+		transpb = bgcol & 0xFF;
+	XPMstruct xpms;
+
+	sscanf(source[0], "%d %d %d %d", &width, &height, &colours, &charpix);
+	 //32 is sure to have enough room
+	unsigned char *pixdata = malloc(width * height * XPM_DEPTH / 8);
+	for (i = 0; i < colours; i++) {
+		if (sscanf(source[1 + i], "%c%*s #%2X%2X%2X", &colchar[i], &colr[i], &colg[i], &colb[i]) != 4)
+			transpchar = colchar[i];
+	}
+
+	for (i = 0; i < height; i++) {
+		for (j = 0; j < width; j++) {
+			sourceindex = (i * width + j);
+			colcode = source[colours + 1 + i][j];
+			for (k = 0; k < colours; k++) {
+				if (colcode == colchar[k])
+					break;
+			}
+
+			colindex = k;
+			pixdataindex = (i * width + j) * XPM_DEPTH / 8;
+			//Blue 0x502040
+			pixdata[pixdataindex + 0] = (colcode != transpchar) ? colb[colindex] : transpb;
+			//Green
+			pixdata[pixdataindex + 1] = (colcode != transpchar) ? colg[colindex] : transpg;
+			//Red
+			pixdata[pixdataindex + 2] = (colcode != transpchar) ? colr[colindex] : transpr;
+			//Aplha - 0:fully transparent...0xFF:fully opaque /Xlib has no alpha-channel support, Xrender has transparency-support
+			pixdata[pixdataindex + 3] = (colcode == transpchar) ? 0x00 : 0xff;
+		}
+	}
+
+	xpms.pixdata = pixdata;
+	xpms.width = width;
+	xpms.height = height;
+	return xpms;
+}
+
+static void gui_seticon(gui_info *ui, char *xpm[]) {
+	ui->icon_set = 1;
+	XPMstruct xpms = XPMtoPixels(xpm, TRANSPCOLOR);
+	XImage *iconimg = XCreateImage(ui->dpy, CopyFromParent, DefaultDepth(ui->dpy, ui->screen),
+		ZPixmap, 0, xpms.pixdata, xpms.width, xpms.height, XPM_DEPTH, 0);
+
+	XInitImage(iconimg);
+	Pixmap icon = XCreatePixmap(ui->dpy, ui->win, xpms.width, xpms.height, DefaultDepth(ui->dpy, ui->screen));
+	if (!ui->gc)
+		ui->gc = XCreateGC(ui->dpy, ui->win, 0, 0);
+
+	XPutImage(ui->dpy, icon, ui->gc, iconimg, 0, 0, 0, 0, xpms.width, xpms.height);
+	XWMHints *hints = XAllocWMHints();
+	hints->flags = IconPixmapHint;
+	hints->icon_pixmap = icon;
+	XSetWMHints(ui->dpy, ui->win, hints);
+	XDestroyImage(iconimg);
+	XUnmapWindow(ui->dpy, ui->win);
+	XMapWindow(ui->dpy, ui->win);
+	XFree(hints);
+}
+
 static int load_font(XFontStruct *font_info, char *font, Display *dpy, GLuint font_base, int *size) {
 	font_info = XLoadQueryFont(dpy, font);
 	size[0] = font_info->ascent;
@@ -1949,7 +2109,7 @@ static int print_string(GLuint font_base, char *s) {
 	if (!glIsList(font_base)) {
 		return 1;
 	}
-	glPushAttrib(GL_LIST_BIT);
+	glPushAttrib(GL_TEXTURE_BIT);
 	glListBase(font_base);
 	glCallLists(strlen(s), GL_UNSIGNED_BYTE, (GLubyte *)s);
 	glPopAttrib();
@@ -1957,19 +2117,21 @@ static int print_string(GLuint font_base, char *s) {
 }
 
 static int drawMenubar(menu_bar_t *window_info) {
-	int index = 0, error = 0;
+	int i = 0, error = 0;
 	double x, y;
-	y = y_top - ((double)window_info->size[2] / (double)window_info->gwa.height) * (y_top - y_bot);
-	while (index < (window_info->num_menus)) {
-		glColor3f(1, 1, 1);
-		x = MenuStart(window_info, index);
+	y = y_top - ((double)window_info->size[1] / (double)window_info->gwa.height) * (y_top - y_bot);
+	char name[max_font_name_length * 2];
+	while (i < (window_info->num_menus)) {
+		glColor3f(0, 0, 0);
+		x = MenuStart(window_info, i);
 		glRasterPos2f(x, y);
-		error += print_string(window_info->font_lists[1], MenuName(window_info, index));
-		++index;
+		snprintf(name, sizeof(name) - 1, " %s ", MenuName(window_info, i));
+		error += print_string(window_info->font_lists, name);
+		++i;
 	}
 
 	y = y_top - LineHeight(window_info, y_top, y_bot);
-	glColor3f(0.6, 0.6, 0.6);
+	glColor3f(1, 1, 1);
 	glBegin(GL_POLYGON);
 	glVertex3f(x_left, y_top, 0);  glVertex3f(x_right, y_top, 0);
 	glVertex3f(x_right, y, 0);   glVertex3f(x_left, y, 0);
@@ -1980,26 +2142,28 @@ static int drawMenubar(menu_bar_t *window_info) {
 static int drawMenu(menu_bar_t *window_info) {
 	int error = 0, index = 0;
 	double y, line_height, x;
-	line_height = LineHeight(window_info, y_top, y_bot);
-	y = (double)(2 * window_info->size[2] + window_info->size[3]);
+	line_height = LineHeight(window_info, y_top, y_bot) + 0.2;
+	y = (double)(2 * window_info->size[1] + window_info->size[2]);
 	y = y * (y_top - y_bot);
 	y = y / (double)window_info->gwa.height;
 	y = y_top - y;
 	x = MenuStart(window_info, GetState(window_info));
+	char name[max_font_name_length * 2];
 	while (index < (window_info->menus[GetState(window_info)].num_items)) {
 		if (index == window_info->menus[GetState(window_info)].active) {
-			glColor3f(0, 0, 0);
-		} else {
 			glColor3f(1, 1, 1);
+		} else {
+			glColor3f(0, 0, 0);
 		}
 		glRasterPos2f(x, y);
-		error += print_string(window_info->font_lists[1], window_info->menus[GetState(window_info)].items[index].item_name);
+		snprintf(name, sizeof(name) - 1, " %s ", window_info->menus[GetState(window_info)].items[index].item_name);
+		error += print_string(window_info->font_lists, name);
 		y -= (line_height);
 		++index;
 	}
 
-	glColor3f(0.6, 0.6, 0.6);
-	y = y_top - (window_info->menus[GetState(window_info)].num_items + 1) * line_height;
+	glColor3f(0.7, 0.7, 0.7);
+	y = y_top - (window_info->menus[GetState(window_info)].num_items + 1) * line_height + 0.1;
 	glBegin(GL_POLYGON);
 	glVertex3f(x, y, 0);
 	glVertex3f(x + MenuWidth(window_info, GetState(window_info)) + 0.1, y, 0);
@@ -2032,11 +2196,11 @@ static int draw(menu_bar_t *window_info) {
 }
 
 static int whichMenu(menu_bar_t *window_info, double x) {
-	int index = window_info->num_menus - 1;
-	while (index > 0 && (MenuStart(window_info, index) > x)) {
-		--index;
+	int i = window_info->num_menus - 1;
+	while (index > 0 && (MenuStart(window_info, i) > x)) {
+		--i;
 	}
-	return index + 1;
+	return i + 1;
 }
 
 static int whichActive(menu_bar_t *window_info, double x, double y) {
@@ -2063,22 +2227,243 @@ static void WMProtocols(Widget w, XEvent *ev, String *params, Cardinal *nparams)
 	}
 }
 
-static Atom active_wm = 0;
+void verify_form(__GUI_FIELD__) {
+	gui_info *ui = (gui_info *)client;
+	Arg wargs[10];
+	ui_field form, *fill = (ui_field *)ui->app->app_array;
+	int len, i, numFields = ui->app->code;
+	ui_form_cb verify = (ui_form_cb)ui->user_data;
+	char *value;
+	Widget field;
 
-static void ui_open_cb(Widget cmd, XtPointer client, XtPointer call_data) {
-	Widget topLevel = XtParent(cmd);
-	if (call_data == NULL) {
-		gui_cancel(cmd);
+	for (i = 0; i < numFields; i++) {
+		form = fill[i];
+		field = (Widget)form.index;
+		char error[100] = {0};
+		if (str_field_valid(field, form)) {
+		} else {
+			switch (form.kind) {
+				case field_number:
+					snprintf(error, sizeof(error), "Error: number must be between %d or %d digits",
+						form.min, form.max);
+					break;
+				case field_text:
+					snprintf(error, sizeof(error), "Error: length overflow %d or underflow %d",
+						form.max, form.min);
+					break;
+				case field_secret:
+					snprintf(error, sizeof(error), "Error: secret aleast 1 cap, 1 number and minimum %d characters",
+						form.min);
+					break;
+				case field_email:
+					snprintf(error, sizeof(error), "Error: invalid Email");
+					break;
+			}
+
+			XtSetArg(wargs[0], XtNlabel, error);
+			XtSetValues(ui->statusLine, wargs, 1);
+			return;
+		}
+
+		XtSetArg(wargs[0], XtNlabel, "");
+		XtSetValues(ui->statusLine, wargs, 1);
+		if (verify) {
+			char status[260] = {0};
+			if (verify(ui->app, form.ID, value, status)) {
+				XtSetArg(wargs[0], XtNlabel, status);
+				XtSetValues(ui->statusLine, wargs, 1);
+			} else {
+				// Error
+				XtSetArg(wargs[0], XtNlabel, status);
+				XtSetValues(ui->statusLine, wargs, 1);
+				return;
+			}
+		}
+	}
+
+	gui_cancel(self);
+}
+
+FORCEINLINE void cancel_form(__GUI_FIELD__) {
+	gui_cancel(self);
+}
+
+FORCEINLINE void ebitable_field(__GUI_FIELD__) {
+	TextFieldSetEditable(self, True);
+}
+
+void verify_field(__GUI_FIELD__) {
+	TextFieldSetEditable(self, True);
+	Arg wargs[10];
+	gui_info *ui = (gui_info *)client;
+	TextFieldVerifyStruct *ret = (TextFieldVerifyStruct *)data;
+	int reason = ret->reason;
+	if (reason == TF_LOSING_FOCUS || reason == TF_VALUE_CHANGED
+		|| reason == TF_MODIFYING_TEXT_VALUE) {
+		printf("focus out, text=%s got: %s\n", ret->text, TextFieldGetString(self));
+		printf("modify, text=%s\n", ret->text);
+		if (ret->text != NULL) {
+			printf("length=%d\n", ret->text->length);
+		}
+	//	XtSetArg(wargs[0], XtNlabel, "Error: invalid input!");
+	//	XtSetValues(ui->statusLine, wargs, 1);
+	} else {
+		TextFieldReturnStruct *ret2 = (TextFieldReturnStruct *)data;
+		printf("ret->string=%s\n", ret2->string);
+		char *s, *str = TextFieldGetString(self);
+		printf("TEXT: item=%s\n", str);
+		s = str;
+		while (*s)
+			*s++ = '*';
+		TextFieldSetString(self, str);
+	}
+}
+
+Widget Xt_text_field(gui_info *gui, ui_field_type kind, char *label, char *field,
+	float x, float y, float width, uintptr_t tag) {
+	Widget text;
+	return text;
+}
+
+Widget Xt_form_button(gui_info *gui, char *title, XtCallbackProc action, int x) {
+	Widget button;
+	if (x == 1)
+		button = XtVaCreateManagedWidget("command",
+			commandWidgetClass, (Widget)gui->app->app_data,
+			XtNlabel, title,
+			XtNwidth, 80,
+			XtNheight, 16,
+			XtNborder, 2,
+			XtNleft, XawChainBottom,
+			XtNright, XawChainBottom,
+			XtNtop, XawChainBottom,
+			XtNbottom, XawChainBottom,
+			XtNfromVert, (Widget)gui->app->app_array,
+			NULL);
+	else
+		button = XtVaCreateManagedWidget("command",
+			commandWidgetClass, (Widget)gui->app->app_data,
+			XtNlabel, title,
+			XtNwidth, 80,
+			XtNheight, 16,
+			XtNborder, 2,
+			XtNleft, XawChainBottom,
+			XtNright, XawChainBottom,
+			XtNtop, XawChainBottom,
+			XtNbottom, XawChainBottom,
+			XtNfromHoriz, (Widget)gui->app->app_array,
+			NULL);
+
+	XtAddCallback(button, XtNcallback, action, gui);
+	gui->app->app_array = (void **)button;
+	return button;
+}
+
+int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form_cb verify) {
+	int i, y = 0, max_width = 0, spacing = 30;
+	int argc = 0;
+	char **argv = NULL;
+
+	/* calculate form width based off longest field width */
+	for (i = 0; i < numFields; i++) {
+		if (fill[i].width > max_width)
+			max_width = fill[i].width;
+	}
+
+	ui->skip_resize = true;
+	ui->title = title;
+	ui->width = max_width + 30;
+	/* calculate form height based off number of text fields provided */
+	ui->height = numFields * 48;
+	ui->user_data = verify;
+	ui->app->code = numFields;
+	ui->topLevel = XtAppInitialize(&ui->app_con, title, NULL, 0,
+		&argc, argv, fallback, NULL, 0);
+	XtResizeWidget(ui->topLevel, ui->width, ui->height, 0);
+
+	Widget text, form = (void *)XtCreateManagedWidget("form", formWidgetClass, ui->topLevel, NULL, 0);
+	for (i = 0; i < numFields; i++) {
+		/* Setup spacing between each `textfield` with `caption/label` */
+		y += spacing;
+		if (fill[i].caption) {
+			text = XtVaCreateManagedWidget("label", labelWidgetClass, form,
+				XtNlabel, fill[i].caption,
+				XtNborder, 0,
+				XtNborderWidth, 0,
+				XtNheight, 9,
+				XtNx, 6,
+				XtNy, y - 12,
+				XtNleft, XtChainLeft,
+				XtNfromVert, text, NULL);
+		}
+
+		text = XtVaCreateManagedWidget("monospaced", textfieldWidgetClass, form,
+			XtNwidth, fill[i].width,
+			XtNstring, fill[i].value,
+			XtNborder, 0,
+			XtNecho, True,
+			XtNx, 5,
+			XtNy, y - 5,
+			XtNheight, 18,
+			XtNleft, XtChainLeft,
+			XtNfromVert, text,
+			NULL);
+
+		XtAddCallback(text, XtNactivateCallback, ebitable_field, ui);
+		XtAddCallback(text, XtNfocusCallback, ebitable_field, ui);
+		XtAddCallback(text, XtNgainPrimaryCallback, ebitable_field, ui);
+		XtAddCallback(text, XtNlosePrimaryCallback, ebitable_field, ui);
+		XtAddCallback(text, XtNmotionVerifyCallback, ebitable_field, ui);
+		XtAddCallback(text, XtNvalueChangedCallback, verify_field, ui);
+		XtAddCallback(text, XtNlosingFocusCallback, verify_field, ui);
+		XtAddCallback(text, XtNmodifyVerifyCallback, verify_field, ui);
+		fill[i].index = text;
+
+		/* Setup area for each `textfield` for immediate validation,
+		 This needs `REDOING` it's simplier to make check box,
+		 this mimic current `Win32` behaviour, needs a non-clickable checkmark with no box. */
+	}
+
+	ui->app->app_data = form;
+	ui->app->app_array = (void **)text;
+
+	Xt_form_button(ui, "Confirm", verify_form, 1);
+	text = Xt_form_button(ui, "Cancel", cancel_form, 1);
+
+	/* Setup statusline area in form for `error` feedback*/
+	ui->statusLine = XtVaCreateManagedWidget("label", labelWidgetClass, form,
+		XtNlabel, "Fill out Form",
+		XtNborder, 0,
+		XtNborderWidth, 0,
+		XtNheight, 9,
+		XtNleft, XawChainRight,
+		XtNright, XawChainRight,
+		XtNtop, XtNbottom,
+		XtNbottom, XtNbottom,
+		XtNfromHoriz, text, NULL);
+
+	/* Store provided `Form` for `verify_form` button click verification process */
+	ui->app->name = ui->title;
+	ui->app->wnd = ui->topLevel;
+	ui->app->gui = ui;
+	ui->wnd = ui->topLevel;
+	ui->app->app_array = (void **)fill;
+	return 1;
+}
+
+void gui_file(__GUI_FILE__) {
+	Widget topLevel = XtParent(self);
+	if (data == NULL) {
+		gui_cancel(self);
 		return;
 	}
 
-	//XtResizeWidget(cmd, 600, 600, 0);
 	Widget fileText = XtVaCreateManagedWidget("fileText", asciiTextWidgetClass,
 		topLevel,
 		XtNheight, 600,
 		XtNwidth, 600,
 		XtNtype, XawAsciiFile,
-		XtNstring, call_data,
+		XtNstring, data,
 		XtNeditType, XawtextEdit,
 		XtNresize, XawtextResizeBoth,
 		XtNscrollHorizontal, XawtextScrollWhenNeeded,
@@ -2087,63 +2472,62 @@ static void ui_open_cb(Widget cmd, XtPointer client, XtPointer call_data) {
 
 	Display *ldpy = XtDisplayOfObject(fileText);
 	Window win = XtWindow(topLevel);
-	XStoreName(ldpy, win, call_data);
+	XStoreName(ldpy, win, data);
 	XMapWindow(ldpy, win);
 }
 
+void gui_save_dialog(__GUI_MENU__) {
+}
+
 void gui_open_dialog(__GUI_MENU__) {
+	gui_info ui = {0};
 	char *filter = "*";
 	char *dir = "./";
 	char *initial = "";
 
 	int argc = 0;
 	char **argv = NULL;
-	XtAppContext app_ctx;
 
-	static char *fallback_resources[] = {
-	  "*variablewidth*font: -adobe-helvetica-medium-r-normal--*-120-*",
-	  "*monospaced*font: -*-courier-medium-r-*-*-14-*-*-*-*-*-*",
-	  "<Message>WM_PROTOCOLS: WMProtocols()\n",
-	  NULL
-	};
-
-	Widget topLevel = XtAppInitialize(&app_ctx, "FilePrompt", NULL, 0,
-		&argc, argv, fallback_resources, NULL, 0);
-	XtResizeWidget(topLevel, 400, 400, 0);
+	ui.topLevel = XtAppInitialize(&ui.app_con, "FilePrompt", NULL, 0,
+		&argc, argv, fallback, NULL, 0);
+	XtResizeWidget(ui.topLevel, 400, 400, 0);
 
 	Widget fileSelect = XtVaCreateManagedWidget("fileSelector",
-		fileSelectWidgetClass, topLevel, NULL, 0);
+		fileSelectWidgetClass, ui.topLevel, NULL, 0);
 	if (data)
 		XtAddCallback(fileSelect, XtNcallback, (XtCallbackProc)data, 0);
 	else
-		XtAddCallback(fileSelect, XtNcallback, ui_open_cb, 0);
+		XtAddCallback(fileSelect, XtNcallback, (XtCallbackProc)gui_file, 0);
 
 	FileSelectSet(fileSelect, dir, filter, initial);
-	self->app_data = (void *)fileSelect;
-	self->name = "Select File";
-	self->wnd = topLevel;
-	gui_active(self);
-	XtDestroyApplicationContext(app_ctx);
+	ui.app->app_data = (void *)fileSelect;
+	ui.app->name = "Select File";
+	ui.app->wnd = ui.topLevel;
+	ui.app->gui = &ui;
+	gui_active(ui);
+	gui_destroy(ui);
 }
 
-void gui_cancel(ui_wnd_t window) {
-	Display *disp = XtDisplayOfObject(window);
-	Window win = XtWindow(window);
-	XEvent event;
-	event.xclient.type = ClientMessage;
-	event.xclient.serial = 0;
-	event.xclient.send_event = True;
-	event.xclient.message_type = active_wm;
-	event.xclient.window = win;
-	event.xclient.format = 32;
-	event.xclient.data.l[0] = active_wm;
-	XSendEvent(disp, win, False, 0, &event);
-	XSync(disp, False);
+void gui_cancel(ui_wnd_t self) {
+	Display *display = XtDisplayOfObject(self);
+	Window win = XtWindowOfObject(self);
+	XEvent ev;
+
+	memset(&ev, 0, sizeof(ev));
+	ev.xclient.type = ClientMessage;
+	ev.xclient.window = win;
+	ev.xclient.message_type = XInternAtom(display, "WM_PROTOCOLS", true);
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = XInternAtom(display, "WM_DELETE_WINDOW", false);
+	ev.xclient.data.l[1] = CurrentTime;
+	XSendEvent(display, win, False, NoEventMask, &ev);
+	XSync(display, False);
 }
 
 void gui_active(gui_info ui) {
 	Display *ldpy = XtDisplayOfObject((Widget)ui.app->app_data);
 	XtAppContext context = XtWidgetToApplicationContext((Widget)ui.app->app_data);
+	ui.dpy = ldpy;
 	XtRealizeWidget(ui.app->wnd);
 
 	XtActionsRec fileprompt_actions[] = {
@@ -2155,21 +2539,48 @@ void gui_active(gui_info ui) {
 
 	/* set up to handle quits */
 	XInternAtom(ldpy, "WM_PROTOCOLS", False);
-	ui.app->code = XInternAtom(ldpy, "WM_DELETE_WINDOW", False);
+	Atom code = XInternAtom(ldpy, "WM_DELETE_WINDOW", False);
 	XtOverrideTranslations(ui.app->wnd,
 		XtParseTranslationTable("<Message>WM_PROTOCOLS: WMProtocols()"));
 
-	Window win = XtWindow(ui.app->wnd);
-	XStoreName(ldpy, win, ui.app->name);
-	XMapWindow(ldpy, win);
+	XSizeHints hints;
+	ui.win = XtWindow(ui.app->wnd);
+	(void)XSetWMProtocols(ldpy, ui.win, (Atom *)&code, 1);
 
-	(void)XSetWMProtocols(ldpy, win, (Atom *)&ui.app->code, 1);
-	active_wm = ui.app->code;
+	if (ui.skip_resize) {
+		hints.flags = PSize | PMinSize | PMaxSize;
+		hints.min_width = hints.max_width = hints.base_width = ui.width;
+		hints.min_height = hints.max_height = hints.base_height = ui.height;
+		XSetWMNormalHints(ldpy, ui.win, &hints);
+	}
+
+	if (!ui.icon_set) {
+		ui.icon_set = 1;
+		XPMstruct xpms = XPMtoPixels(icon_32x32, TRANSPCOLOR);
+		XImage *iconimg = XCreateImage(ui.dpy, CopyFromParent, DefaultDepth(ui.dpy, ui.screen),
+			ZPixmap, 0, xpms.pixdata, xpms.width, xpms.height, XPM_DEPTH, 0);
+
+		XInitImage(iconimg);
+		Pixmap icon = XCreatePixmap(ui.dpy, ui.win, xpms.width, xpms.height, DefaultDepth(ui.dpy, ui.screen));
+		if (!ui.gc)
+			ui.gc = XCreateGC(ui.dpy, ui.win, 0, 0);
+
+		XPutImage(ui.dpy, icon, ui.gc, iconimg, 0, 0, 0, 0, xpms.width, xpms.height);
+		XWMHints *hints = XAllocWMHints();
+		hints->flags = IconPixmapHint;
+		hints->icon_pixmap = icon;
+		XSetWMHints(ui.dpy, ui.win, hints);
+		XDestroyImage(iconimg);
+		XFree(hints);
+	}
+
+	XStoreName(ldpy, ui.win, ui.app->name);
+	XMapWindow(ui.dpy, ui.win);
 	XEvent ev;
 	for (;;) {
 		XtAppNextEvent(context, &ev);
 		XtDispatchEvent(&ev);
-		if (ev.xclient.type == ClientMessage && ev.xclient.data.l[0] == ui.app->code)
+		if (ev.xclient.type == ClientMessage && ev.xclient.data.l[0] == code)
 			break;
 	}
 	XtUnrealizeWidget(ui.app->wnd);
@@ -2196,7 +2607,7 @@ int gui_menu(gui_info *ui, int num_menu, menuitem_t *items, int number_items, in
 static void gui_querymenu(gui_info *ui) {
 	int error = 0, index = 0, item_index = 0;
 	double x = 0, width = 0, temp;
-	XFontStruct *menu_font = XLoadQueryFont(ui->dpy, ui->bar_info->font_names[1]);
+	XFontStruct *menu_font = XLoadQueryFont(ui->dpy, ui->bar_info->font_names);
 
 	while (index < (ui->bar_info->num_menus)) {
 		ui->bar_info->menus[index].x_start = x;
@@ -2204,7 +2615,15 @@ static void gui_querymenu(gui_info *ui) {
 		ui->bar_info->menus[index].x_end = x;
 		x += left_menu_padding;
 		while (item_index < ui->bar_info->menus[index].num_items) {
-			temp = XTextWidth(menu_font, ui->bar_info->menus[index].items[item_index].item_name, strlen(ui->bar_info->menus[index].items[item_index].item_name));
+			if (!ui->bar_info->menus[index].items[item_index].item_name
+				&& !ui->bar_info->menus[index].items[item_index].action) {
+				ui->bar_info->menus[index].items[item_index].item_name = Xt_menu_seperator;
+				temp = XTextWidth(menu_font, Xt_menu_seperator, strlen(Xt_menu_seperator));
+			} else {
+				temp = XTextWidth(menu_font, ui->bar_info->menus[index].items[item_index].item_name,
+					strlen(ui->bar_info->menus[index].items[item_index].item_name));
+				temp += 4;
+			}
 			width = (temp > width) ? temp : width;
 			++item_index;
 		}
@@ -2216,17 +2635,16 @@ static void gui_querymenu(gui_info *ui) {
 }
 
 int gui_menufont(gui_info *ui, const char *font) {
-	memcpy(ui->bar_info->font_names[0], font, strlen(font));
-	ui->bar_info->font_names[0][strlen(font)] = '\0';
-	ui->bar_info->font_lists[0] = glGenLists(256);
-	if (!glIsList(ui->bar_info->font_lists[0])) {
-		fprintf(stdout, "\tfont list failure\n");
+	ui->bar_info->font_names = strdup(font);
+	ui->bar_info->font_lists = glGenLists(256);
+	if (!glIsList(ui->bar_info->font_lists)) {
+		XtAppError(ui->app_con, "\tfont list failure\n");
 		return 0;
 	}
 
-	if (load_font(ui->bar_info->font_info, ui->bar_info->font_names[0],
-		ui->dpy, ui->bar_info->font_lists[0], ui->bar_info->size) != 0) {
-		fprintf(stdout, "\tfont load failure\n");
+	if (load_font(ui->bar_info->font_info, ui->bar_info->font_names,
+		ui->dpy, ui->bar_info->font_lists, &ui->bar_info->size[1]) != 0) {
+		XtAppError(ui->app_con, "\tfont load failure\n");
 		return 0;
 	}
 
@@ -2237,11 +2655,8 @@ static void gui_free(gui_info *ui) {
 	int i;
 	if (ui) {
 		if (ui->bar_info) {
-			for (i = 0; i < ui->bar_info->num_fonts; i++)
-				free(ui->bar_info->font_names[i]);
 			free(ui->bar_info->font_names);
 			free(ui->bar_info->menus);
-			free(ui->bar_info->font_lists);
 			free(ui->bar_info->font_info);
 			free(ui->bar_info->size);
 			free(ui->bar_info);
@@ -2254,8 +2669,6 @@ static void gui_free(gui_info *ui) {
 		}
 
 		XDestroyWindow(ui->dpy, ui->win);
-		XCloseDisplay(ui->dpy);
-
 		if (ui->buf) {
 			free(ui->buf);
 			ui->buf = NULL;
@@ -2271,16 +2684,9 @@ int gui_menubar(gui_info *ui, int numof_menus) {
 		ui->bar_info->num_menus = numof_menus;
 		ui->bar_info->menus = (menu_t *)calloc(1, GetNumMenus(ui->bar_info) * sizeof(menu_t));
 		ui->bar_info->num_fonts = 1;
-		ui->bar_info->font_lists = (GLuint *)malloc(GetNumFonts(ui->bar_info) * sizeof(GLuint));
 		ui->bar_info->font_info = (XFontStruct *)malloc(GetNumFonts(ui->bar_info) * sizeof(XFontStruct));
 		ui->bar_info->size = (int *)malloc(GetNumFonts(ui->bar_info) * 2 * sizeof(int));
 		ui->bar_info->state = 0;
-		ui->bar_info->font_names = (char **)malloc(GetNumFonts(ui->bar_info) * sizeof(char *));
-		while (index < ui->bar_info->num_fonts) {
-			ui->bar_info->font_names[index] = (char *)malloc(max_font_name_length * sizeof(char));
-			++index;
-		}
-
 		return 1;
 	}
 
@@ -2288,12 +2694,12 @@ int gui_menubar(gui_info *ui, int numof_menus) {
 }
 
 int gui_handler(gui_info *ui) {
-	if (!ui->bar_info.bar_ready)
-		gui_querymenu(ui);
-
 	int buttoncase, click_x, click_y, error, check;
 	double x_limit, y_limit, x, y;
-	ui_t menu[1];
+	ui_t *app = ui->app;
+	if (!ui->bar_info->bar_ready)
+		gui_querymenu(ui);
+
 	glEnable(GL_DEPTH_TEST);
 	while (1) {
 		XNextEvent(ui->dpy, &ui->xev);
@@ -2328,22 +2734,24 @@ int gui_handler(gui_info *ui) {
 						ui->bar_info->state = 0;
 						break;
 					case run_command:
-						memset(menu, 0, sizeof(ui_t));
-						menu->wnd = ui->topLevel;
-
+						memset(app, 0, sizeof(ui_t));
+						app->wnd = ui->topLevel;
 						menuitem_t menu_active = ui->bar_info->menus[GetState(ui->bar_info)]
 							.items[ui->bar_info->menus[GetState(ui->bar_info)].active];
-						menu_active.action(menu, menu_active.data);
+						if (menu_active.action)
+							menu_active.action(app, menu_active.data);
 						break;
 					default:
 						break;
 				}
 			case Expose:
+				if (ui->bar_info == NULL)
+					trace;
 				XGetWindowAttributes(ui->dpy, ui->win, &(ui->bar_info->gwa));
 				glViewport(0, 0, ui->bar_info->gwa.width, ui->bar_info->gwa.height);
 				error = draw(ui->bar_info);
 				if (error != 0) {
-					fprintf(stdout, "\tfont failure: %d\n", error);
+					fprintf(stderr, "\tfont failure: %d\n", error);
 					return 0;
 				}
 				glXSwapBuffers(ui->dpy, ui->win);
@@ -2427,39 +2835,40 @@ static bool isInside(int x, int y, XRectangle rect) {
 }
 
 int gui_message_box(ui_t *app, const char *title, const char *text, const Button *buttons, int numButtons) {
+	gui_info ui = {0};
 	// convert the text in list (to draw in multiply lines)
 	char **text_splitted = NULL;
 	int textLines = 0;
 	split(text, "\n", &text_splitted, &textLines);
 
-	Display *dpy = XOpenDisplay(NULL);
-	if (dpy == NULL) {
+	ui.dpy = XOpenDisplay(NULL);
+	if (ui.dpy == NULL) {
 		fprintf(stderr, "Error opening display display.");
 	}
 
-	int ds = DefaultScreen(dpy);
-	Window win = XCreateSimpleWindow(dpy, RootWindow(dpy, ds), 0, 10, 400, 120, 0,
-		BlackPixel(dpy, ds), WhitePixel(dpy, ds));
+	ui.screen = DefaultScreen(ui.dpy);
+	ui.win = XCreateSimpleWindow(ui.dpy, RootWindow(ui.dpy, ui.screen), 0, 10, 400, 120, 0,
+		BlackPixel(ui.dpy, ui.screen), WhitePixel(ui.dpy, ui.screen));
 
-	XSelectInput(dpy, win, ExposureMask | PointerMotionMask | ButtonPressMask | ButtonReleaseMask);
-	XMapWindow(dpy, win);
+	XSelectInput(ui.dpy, ui.win, ExposureMask | PointerMotionMask | ButtonPressMask | ButtonReleaseMask);
+	XMapWindow(ui.dpy, ui.win);
 
 	//allow windows to be closed by pressing cross button (but it wont close - see ClientMessage on switch)
-	Atom WM_DELETE_WINDOW = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
-	XSetWMProtocols(dpy, win, &WM_DELETE_WINDOW, 1);
+	Atom WM_DELETE_WINDOW = XInternAtom(ui.dpy, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols(ui.dpy, ui.win, &WM_DELETE_WINDOW, 1);
 
 	// create the gc for drawing text
 	XGCValues gcValues;
-	gcValues.font = XLoadFont(dpy, "7x13");
-	gcValues.foreground = BlackPixel(dpy, ds);
-	GC textGC = XCreateGC(dpy, win, GCFont + GCForeground, &gcValues);
-	XUnmapWindow(dpy, win);
+	gcValues.font = XLoadFont(ui.dpy, "7x13");
+	gcValues.foreground = BlackPixel(ui.dpy, ui.screen);
+	ui.gc = XCreateGC(ui.dpy, ui.win, GCFont + GCForeground, &gcValues);
+	XUnmapWindow(ui.dpy, ui.win);
 
 	// create fontset
 	char **missingCharset_list = NULL;
 	int i, missingCharset_count = 0;
 	XFontSet fs;
-	fs = XCreateFontSet(dpy,
+	fs = XCreateFontSet(ui.dpy,
 		"-*-*-medium-r-*-*-*-140-75-75-*-*-*-*",
 		&missingCharset_list, &missingCharset_count, NULL);
 
@@ -2472,7 +2881,7 @@ int gui_message_box(ui_t *app, const char *title, const char *text, const Button
 		missingCharset_list = NULL;
 	}
 
-	Colormap cmap = DefaultColormap(dpy, ds);
+	Colormap cmap = DefaultColormap(ui.dpy, ui.screen);
 
 	//resize the window according to the text size
 	unsigned int winW, winH;
@@ -2491,17 +2900,17 @@ int gui_message_box(ui_t *app, const char *title, const char *text, const Button
 	hints.min_width = hints.max_width = hints.base_width = winW;
 	hints.min_height = hints.max_height = hints.base_height = winH;
 
-	XSetWMNormalHints(dpy, win, &hints);
-	XMapRaised(dpy, win);
+	XSetWMNormalHints(ui.dpy, ui.win, &hints);
+	gui_seticon(&ui, icon_32x32);
 
 	GC barGC;
 	GC buttonGC;
 	GC buttonGC_underPointer;
 	GC buttonGC_onClick;                               // GC colors
-	createGC(&barGC, &cmap, dpy, &win, RGB_WHITE);
-	createGC(&buttonGC, &cmap, dpy, &win, RGB_GOLDEN_ROD);
-	createGC(&buttonGC_underPointer, &cmap, dpy, &win, RGB_SILVER);
-	createGC(&buttonGC_onClick, &cmap, dpy, &win, RGB_DIM_GRAY);
+	createGC(&barGC, &cmap, ui.dpy, &ui.win, RGB_WHITE);
+	createGC(&buttonGC, &cmap, ui.dpy, &ui.win, RGB_GOLDEN_ROD);
+	createGC(&buttonGC_underPointer, &cmap, ui.dpy, &ui.win, RGB_SILVER);
+	createGC(&buttonGC_onClick, &cmap, ui.dpy, &ui.win, RGB_DIM_GRAY);
 
 	/* setup the buttons data */
 	ButtonData *btsData;
@@ -2522,15 +2931,15 @@ int gui_message_box(ui_t *app, const char *title, const char *text, const Button
 		pass += btsData[i].rect.width + dim.btSpacing;
 	}
 
-	setWindowTitle(title, &win, dpy);
-	XFlush(dpy);
+	setWindowTitle(title, &ui.win, ui.dpy);
+	XFlush(ui.dpy);
 
 	bool quit = false;
 	int res = -1;
 
 	while (!quit) {
 		XEvent e;
-		XNextEvent(dpy, &e);
+		XNextEvent(ui.dpy, &e);
 		switch (e.type) {
 			case MotionNotify:
 			case ButtonPress:
@@ -2541,7 +2950,7 @@ int gui_message_box(ui_t *app, const char *title, const char *text, const Button
 						btsData[i].gc = &buttonGC_underPointer;
 						if (e.type == ButtonPress && e.xbutton.button == Button1) {
 							btsData[i].gc = &buttonGC_onClick;
-							res = btsData[i].button->result;
+							res = i + 1;
 							quit = true;
 						}
 					}
@@ -2549,24 +2958,24 @@ int gui_message_box(ui_t *app, const char *title, const char *text, const Button
 			case Expose:
 				// draw the text in multiply lines
 				for (i = 0; i < textLines; i++) {
-					Xutf8DrawString(dpy, win, fs, textGC, dim.pad_left, dim.pad_up + i * (dim.lineSpacing + 18),
+					Xutf8DrawString(ui.dpy, ui.win, fs, ui.gc, dim.pad_left, dim.pad_up + i * (dim.lineSpacing + 18),
 						text_splitted[i], (int)strlen(text_splitted[i]));
 				}
 
-				XFillRectangle(dpy, win, barGC, 0, textH + dim.pad_up + dim.pad_down, winW, dim.barHeight);
+				XFillRectangle(ui.dpy, ui.win, barGC, 0, textH + dim.pad_up + dim.pad_down, winW, dim.barHeight);
 				for (i = 0; i < numButtons; i++) {
-					XFillRectangle(dpy, win, *btsData[i].gc, btsData[i].rect.x, btsData[i].rect.y,
+					XFillRectangle(ui.dpy, ui.win, *btsData[i].gc, btsData[i].rect.x, btsData[i].rect.y,
 						btsData[i].rect.width, btsData[i].rect.height);
 
 					XRectangle btTextDim;
 					Xutf8TextExtents(fs, btsData[i].button->label, (int)strlen(btsData[i].button->label),
 						&btTextDim, NULL);
-					Xutf8DrawString(dpy, win, fs, textGC,
+					Xutf8DrawString(ui.dpy, ui.win, fs, ui.gc,
 						btsData[i].rect.x + (btsData[i].rect.width - btTextDim.width) / 2,
 						btsData[i].rect.y + (btsData[i].rect.height + btTextDim.height) / 2,
 						btsData[i].button->label, (int)strlen(btsData[i].button->label));
 				}
-				XFlush(dpy);
+				XFlush(ui.dpy);
 				break;
 			case ClientMessage:
 				break;
@@ -2582,28 +2991,21 @@ int gui_message_box(ui_t *app, const char *title, const char *text, const Button
 	free(btsData);
 	if (missingCharset_list)
 		XFreeStringList(missingCharset_list);
-	XDestroyWindow(dpy, win);
-	XFreeFontSet(dpy, fs);
-	XFreeGC(dpy, textGC);
-	XFreeGC(dpy, barGC);
-	XFreeGC(dpy, buttonGC);
-	XFreeGC(dpy, buttonGC_underPointer);
-	XFreeGC(dpy, buttonGC_onClick);
-	XFreeColormap(dpy, cmap);
-	XCloseDisplay(dpy);
+	XDestroyWindow(ui.dpy, ui.win);
+	XFreeFontSet(ui.dpy, fs);
+	XFreeGC(ui.dpy, ui.gc);
+	XFreeGC(ui.dpy, barGC);
+	XFreeGC(ui.dpy, buttonGC);
+	XFreeGC(ui.dpy, buttonGC_underPointer);
+	XFreeGC(ui.dpy, buttonGC_onClick);
+	XFreeColormap(ui.dpy, cmap);
+	XCloseDisplay(ui.dpy);
 
 	return res;
 }
 
 // clang-format off
 static int _GUI_KEYCODES[124] = {XK_BackSpace,8,XK_Delete,127,XK_Down,18,XK_End,5,XK_Escape,27,XK_Home,2,XK_Insert,26,XK_Left,20,XK_Page_Down,4,XK_Page_Up,3,XK_Return,10,XK_Right,19,XK_Tab,9,XK_Up,17,XK_apostrophe,39,XK_backslash,92,XK_bracketleft,91,XK_bracketright,93,XK_comma,44,XK_equal,61,XK_grave,96,XK_minus,45,XK_period,46,XK_semicolon,59,XK_slash,47,XK_space,32,XK_a,65,XK_b,66,XK_c,67,XK_d,68,XK_e,69,XK_f,70,XK_g,71,XK_h,72,XK_i,73,XK_j,74,XK_k,75,XK_l,76,XK_m,77,XK_n,78,XK_o,79,XK_p,80,XK_q,81,XK_r,82,XK_s,83,XK_t,84,XK_u,85,XK_v,86,XK_w,87,XK_x,88,XK_y,89,XK_z,90,XK_0,48,XK_1,49,XK_2,50,XK_3,51,XK_4,52,XK_5,53,XK_6,54,XK_7,55,XK_8,56,XK_9,57};
-
-static char *fallback[] = {
-  "*variablewidth*font: -adobe-helvetica-medium-r-normal--*-120-*",
-  "*monospaced*font: -*-courier-medium-r-*-*-14-*-*-*-*-*-*",
-  "<Message>WM_PROTOCOLS: WMProtocols()\n",
-  NULL
-};
 
 int gui_window(gui_info *ui, const char *title, int width, int height, int buffered) {
 	GLint att[] = {
@@ -2624,37 +3026,36 @@ int gui_window(gui_info *ui, const char *title, int width, int height, int buffe
 	ui->title = title;
 	ui->width = (int)width;
 	ui->height = (int)height;
-	if (buffered) {
+	if (buffered == true) {
 		ui->buf = malloc(ui->width * ui->height * sizeof(uint32_t));
 		if (!ui->buf)
 			return 0;
 	}
 
-	if (!ui->buf) {
+	if (main_gui_info == NULL) {
 		ui->wnd = XtOpenApplication(&ui->app_con, ui->title, NULL, 0, &argc, argv,
 			fallback, sessionShellWidgetClass, NULL, 0);
-		ui->dpy = XtDisplayOfObject(ui->wnd);
-	} else {
-		ui->dpy = XOpenDisplay(NULL);
+		main_gui_info = ui;
 	}
 
+	ui->dpy = XtDisplayOfObject(main_gui_info->wnd);
 	if (ui->dpy == NULL) {
-		printf("\n\tcannot connect to X server\n\n");
+		XtAppError(ui->app_con, "\n\tcannot connect to X server\n\n");
 		return 0;
 	}
 
-	int screen = DefaultScreen(ui->dpy);
+	ui->screen = DefaultScreen(ui->dpy);
 	if (!ui->buf) {
-		ui->vi = glXChooseVisual(ui->dpy, screen, att);
+		ui->vi = glXChooseVisual(ui->dpy, ui->screen, att);
 		if (ui->vi == NULL) {
-			printf("\n\tno appropriate visual found\n\n");
+			XtAppError(ui->app_con, "\n\tno appropriate visual found\n\n");
 			return 0;
 		}
 	}
 
-	ui->root = RootWindow(ui->dpy, screen);
+	ui->root = RootWindow(ui->dpy, ui->screen);
 	ui->win = XCreateSimpleWindow(ui->dpy, ui->root, 0, 0, ui->width, ui->height, 0,
-		BlackPixel(ui->dpy, screen), WhitePixel(ui->dpy, screen));
+		BlackPixel(ui->dpy, ui->screen), WhitePixel(ui->dpy, ui->screen));
 
 	if (ui->buf)
 		ui->gc = XCreateGC(ui->dpy, ui->win, 0, 0);
@@ -2663,15 +3064,25 @@ int gui_window(gui_info *ui, const char *title, int width, int height, int buffe
 		ExposureMask | KeyPressMask | ButtonPressMask | PointerMotionMask);
 	ui->wmDeleteMessage = XInternAtom(ui->dpy, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(ui->dpy, ui->win, &ui->wmDeleteMessage, 1);
+
+	if (buffered == -1) {
+		XSizeHints hints;
+		hints.flags = PSize | PMinSize | PMaxSize;
+		hints.min_width = hints.max_width = hints.base_width = width;
+		hints.min_height = hints.max_height = hints.base_height = height;
+		XSetWMNormalHints(ui->dpy, ui->win, &hints);
+	}
+
+	gui_seticon(ui, icon_32x32);
 	XStoreName(ui->dpy, ui->win, ui->title);
-	XMapWindow(ui->dpy, ui->win);
 
 	if (!ui->buf) {
 		XSync(ui->dpy, 0);
 		ui->glc = glXCreateContext(ui->dpy, ui->vi, NULL, GL_TRUE);
 		glXMakeCurrent(ui->dpy, ui->win, ui->glc);
 		ui->topLevel = XtAppCreateShell("main", NULL, applicationShellWidgetClass, ui->dpy, NULL, 0);
-		XtResizeWidget(ui->topLevel, 310, 110, 1);
+		XtResizeWidget(ui->topLevel, ui->width, ui->height, 1);
+		ui->app->wnd = ui->topLevel;
 	} else {
 		XSync(ui->dpy, ui->win);
 		ui->img = XCreateImage(ui->dpy, DefaultVisual(ui->dpy, 0), 24, ZPixmap, 0,
@@ -2681,14 +3092,12 @@ int gui_window(gui_info *ui, const char *title, int width, int height, int buffe
 	return 1;
 }
 
-void gui_close(gui_info *ui) {
+FORCEINLINE void gui_close(gui_info *ui) {
 	gui_free(ui);
 }
 
-void gui_destroy(gui_info ui) {
-	if (ui.app) {
-		XtDestroyWidget(ui.app->app_data);
-	}
+FORCEINLINE void gui_destroy(gui_info ui) {
+	XtDestroyApplicationContext(ui.app_con);
 }
 
 int gui_loop(gui_info *ui) {
@@ -2699,22 +3108,6 @@ int gui_loop(gui_info *ui) {
 	while (XPending(ui->dpy)) {
 		XNextEvent(ui->dpy, &ev);
 		switch (ev.type) {
-			case ConfigureNotify: {
-					if (ev.xconfigure.width != ui->width || ev.xconfigure.height != ui->height) {
-						uint32_t *new_buf = realloc(ui->buf, ev.xconfigure.width * ev.xconfigure.height * sizeof(uint32_t));
-						if (!new_buf) break;
-
-						ui->img->data = NULL;
-						XDestroyImage(ui->img);
-
-						ui->buf = new_buf;
-						ui->width = ev.xconfigure.width;
-						ui->height = ev.xconfigure.height;
-
-						ui->img = XCreateImage(ui->dpy, DefaultVisual(ui->dpy, 0), 24, ZPixmap, 0,
-							(char *)ui->buf, ui->width, ui->height, 32, 0);
-					}
-				} break;
 			case ClientMessage:
 				if (ev.xclient.data.l[0] == ui->wmDeleteMessage)
 					return -(ClientMessage);

@@ -31,7 +31,7 @@
 
 #ifndef XtIsTextField
 #define XtIsTextField(w) XtIsSubclass((Widget)w, textfieldWidgetClass)
-#endif 
+#endif
 
 /* Athena style resource names */
 
@@ -115,28 +115,28 @@
 extern WidgetClass textfieldWidgetClass;
 
 typedef struct _TextFieldClassRec *TextFieldWidgetClass;
-typedef struct _TextFieldRec      *TextFieldWidget;
+typedef struct _TextFieldRec *TextFieldWidget;
 
 typedef struct _TextFieldReturnStruct {
 	int	reason;		/* Motif compatibility */
-	XEvent	*event;
-	char	*string;
+	XEvent *event;
+	char *string;
 } TextFieldReturnStruct;
 
 typedef	struct {
-	char	*ptr ;
-	int	length ;
-	int	format ;	/* reserved; Motif compatibility */
-} TextFieldBlockRec, *TextFieldBlock ;
+	char *ptr;
+	int	length;
+	int	format;	/* reserved; Motif compatibility */
+} TextFieldBlockRec, *TextFieldBlock;
 
 typedef	struct _TextFieldVerifyStruct {
-	int	reason ;	/* Motif compatibility */
-	XEvent	*event ;
-	Boolean	doit ;
-	int	curInsert, newInsert ;
-	int	startPos, endPos ;
-	TextFieldBlock text ;
-} TextFieldVerifyStruct ;
+	int	reason;	/* Motif compatibility */
+	XEvent *event;
+	Boolean	doit;
+	int	curInsert, newInsert;
+	int	startPos, endPos;
+	TextFieldBlock text;
+} TextFieldVerifyStruct;
 
 	/* reason values: (Motif compatibility) */
 

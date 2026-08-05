@@ -34,8 +34,8 @@ typedef struct Buttons_s {
 #define in ,
 #define lucida			"LucidaGrande"
 #define __GUI_MENU__ 	id self, SEL selector, id data
-#define __GUI_SEPERATOR__ 	0, 0, 0, 0, 0
 #define __GUI_FILE__ 	id self, NSString file
+#define __GUI_FIELD__ 	__GUI_MENU__
 #elif defined(_WIN32)
 #include <windows.h>
 #include <commctrl.h>
@@ -72,10 +72,12 @@ typedef struct ButtonW {
 #define lucida "Lucida Sans"
 #define __GUI_MENU__ 	ui_t *self, void *data
 #define __GUI_FILE__ 	ui_t *self, const char *file
+#define __GUI_FIELD__ 	__GUI_MENU__
 #else
-#define lucida "lucidasans-12"
+#define lucida "lucidasans-10"
 #define __GUI_MENU__ 	ui_t *self, void *data
-#define __GUI_FILE__ 	ui_t *self, const char *file
+#define __GUI_FILE__ 	Widget self, XtPointer client, XtPointer data
+#define __GUI_FIELD__ 	__GUI_FILE__
 #define _DEFAULT_SOURCE 1
 #include <GL/gl.h>
 #include <GL/glx.h>
@@ -96,6 +98,8 @@ typedef struct ButtonW {
 #include <X11/Xatom.h>
 #include <X11/Xmu/Xmu.h>
 #include <X11/Xaw/Box.h>
+#include <X11/Xaw/Paned.h>
+#include <X11/Xaw/Dialog.h>
 #include <X11/Xaw/Command.h>
 #include <X11/Xaw/Form.h>
 #include <X11/Xaw/AsciiText.h>
@@ -316,6 +320,13 @@ typedef id ui_wnd_t;
 typedef NSColor ui_color_t;
 /* Platform Menu type */
 typedef NSMenu ui_menu_t;
+/* Platform TextField type */
+typedef NSTextField ui_form_t;
+/* Platform string type */
+typedef NSString ui_str_t;
+/* Platform bool type */
+typedef BOOL ui_bool;
+#define ui_field_str(value, field)		ui_str_t value = (ui_str_t)cocoa_send((id)field, "stringValue")
 #elif defined(_WIN32)
 /* Platform Window type */
 typedef HWND ui_wnd_t;
@@ -325,6 +336,15 @@ typedef HFONT ui_font_t;
 typedef COLORREF ui_color_t;
 /* Platform Menu type */
 typedef HMENU ui_menu_t;
+/* Platform TextField type */
+typedef HWND ui_form_t;
+/* Platform string type */
+typedef char *ui_str_t;
+/* Platform bool type */
+typedef BOOL ui_bool;
+#define ui_field_str(value, field)	\
+	char value##[256];				\
+	GetDlgItemTextA(field, GetDlgCtrlID(field), value, sizeof(value))
 #else
 /* Platform Window type */
 typedef Widget ui_wnd_t;
@@ -334,6 +354,13 @@ typedef XFontStruct *ui_font_t;
 typedef Colormap ui_color_t;
 /* Platform Menu type */
 typedef void *ui_menu_t;
+/* Platform TextField type */
+typedef Widget ui_form_t;
+/* Platform string type */
+typedef char *ui_str_t;
+/* Platform bool type */
+typedef bool ui_bool;
+#define ui_field_str(value, field)		ui_str_t value = TextFieldGetString(field)
 #endif
 
 typedef union {
@@ -361,8 +388,8 @@ typedef struct Forms_s {
 	int width;
 	int max;
 	int min;
+	ui_form_t index;
 #if __APPLE__
-	void *index;
 	void *valid;
 #endif
 } Form;
@@ -437,11 +464,10 @@ typedef struct {
 #else
 	XWindowAttributes gwa;
 	int num_fonts;
-	char **font_names;
 	int *size;
-	GLuint *font_lists;
+	GLuint font_lists;
 #endif
-	const char *font_names;
+	char *font_names;
 	ui_font_t font_info;
 	ui_menu_t hMenubar;
 } menu_bar_t;
@@ -463,9 +489,7 @@ struct gui_info_s {
 	ui_color_t txtCr, bkCr;
 	/* For passing data to custom `Window` handler routine */
 	void *user_data;
-#if defined(_WIN32) || defined(__APPLE__)
 	ui_t app[1];
-#endif
 #if defined(_WIN32)
 	WNDCLASSEX wc;
 	MSG msg;
@@ -476,12 +500,14 @@ struct gui_info_s {
 	Class delegate;
 	id delegate_instance;
 #else
-	ui_t *app;
+	bool icon_set;
+	bool skip_resize;
+	int screen;
 	Colormap cmap;
 	Window win, root;
 	Atom wmDeleteMessage;
 	XEvent xev;
-	Widget topLevel;
+	Widget topLevel, statusLine;
 	Display *dpy;
 	XVisualInfo *vi;
 	XtAppContext app_con;
@@ -490,6 +516,10 @@ struct gui_info_s {
 	XImage *img;
 #endif
 };
+
+C_API size_t str_length(ui_form_t field);
+C_API ui_bool str_is_regex(const char *pattern, ui_str_t match);
+C_API ui_bool str_field_valid(ui_form_t field, ui_field form);
 
 C_API void gui_open_dialog(__GUI_MENU__);
 C_API void gui_save_dialog(__GUI_MENU__);
