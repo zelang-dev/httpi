@@ -25,7 +25,7 @@
 #ifndef _TextField_H
 #define _TextField_H
 
-#include <X11/Core.h>
+#include <X11/Intrinsic.h>
 
 #define _TextField_WIDGET_VERSION	1.0
 

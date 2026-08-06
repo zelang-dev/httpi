@@ -51,6 +51,8 @@ SOFTWARE.
 #ifndef _XawDialog_h
 #define _XawDialog_h
 
+#include <X11/Intrinsic.h>
+#include <X11/Constraint.h>
 #include <Linux/Xaw95/Form.h>
 
 /***********************************************************************

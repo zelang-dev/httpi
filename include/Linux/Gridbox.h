@@ -9,6 +9,7 @@
 #ifndef _Gridbox_h
 #define _Gridbox_h
 
+#include <X11/Intrinsic.h>
 #include <X11/Constraint.h>
 
 /***********************************************************************

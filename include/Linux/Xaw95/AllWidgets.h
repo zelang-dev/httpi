@@ -28,6 +28,9 @@ in this Software without prior written authorization from the X Consortium.
 #ifndef _XawAllWidgets_h
 #define _XawAllWidgets_h
 
+#include <X11/Xmu/WidgetNode.h>
+#include <X11/Constraint.h>
+
 /*
  * This file matches the generated AllWidgets.c
  */

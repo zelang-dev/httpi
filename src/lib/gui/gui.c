@@ -1961,6 +1961,8 @@ static char *Xt_menu_seperator = " _____ ";
 static char *fallback[] = {
   "*variablewidth*font: -adobe-helvetica-medium-r-normal--*-120-*",
   "*monospaced*font: -*-courier-medium-r-*-*-14-*-*-*-*-*-*",
+  "*sans-serif*font: -*-helvetica-medium-r-*-*-12-*-*-*-*-*-*",
+  "*serif*font: -*-times-medium-r-*-*-12-*-*-*-*-*-*",
   "<Message>WM_PROTOCOLS: WMProtocols()\n",
   NULL
 };
@@ -2372,7 +2374,7 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 
 	ui->skip_resize = true;
 	ui->title = title;
-	ui->width = max_width + 30;
+	ui->width = max_width + 20;
 	/* calculate form height based off number of text fields provided */
 	ui->height = numFields * 48;
 	ui->user_data = verify;
@@ -2397,10 +2399,11 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 				XtNfromVert, text, NULL);
 		}
 
-		text = XtVaCreateManagedWidget("monospaced", textfieldWidgetClass, form,
+		text = XtVaCreateManagedWidget("sans-serif", textfieldWidgetClass, form,
 			XtNwidth, fill[i].width,
 			XtNstring, fill[i].value,
 			XtNborder, 0,
+			XtNinsertPosition, 0,
 			XtNecho, True,
 			XtNx, 5,
 			XtNy, y - 5,
@@ -2432,15 +2435,12 @@ int gui_form(gui_info *ui, const char *title, Form *fill, int numFields, ui_form
 
 	/* Setup statusline area in form for `error` feedback*/
 	ui->statusLine = XtVaCreateManagedWidget("label", labelWidgetClass, form,
+		XtNwidth, ui->width - 20,
 		XtNlabel, "Fill out Form",
 		XtNborder, 0,
 		XtNborderWidth, 0,
 		XtNheight, 9,
-		XtNleft, XawChainRight,
-		XtNright, XawChainRight,
-		XtNtop, XtNbottom,
-		XtNbottom, XtNbottom,
-		XtNfromHoriz, text, NULL);
+		XtNfromVert, text, NULL);
 
 	/* Store provided `Form` for `verify_form` button click verification process */
 	ui->app->name = ui->title;

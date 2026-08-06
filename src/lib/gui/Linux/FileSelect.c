@@ -17,7 +17,23 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <gui.h>
+
+#include <X11/IntrinsicP.h>
+#include <X11/Xos.h>
+#include <X11/StringDefs.h>
+#include <X11/Shell.h>
+#include <X11/Xmu/Misc.h>
+#include <Linux/Xaw95/AsciiText.h>
+#include <Linux/Xaw95/Command.h>
+#include <Linux/Xaw95/MenuButton.h>
+#include <Linux/Xaw95/Label.h>
+#include <Linux/Xaw95/Viewport.h>
+#include <Linux/Xaw95/List.h>
+#include <Linux/Xaw95/Scrollbar.h>
+#include <Linux/Xaw95/SimpleMenu.h>
+#include <Linux/Xaw95/SmeBSB.h>
+#include <Linux/Xaw95/SmeLine.h>
+#include <stdlib.h>
 
 #include "FileSelectP.h"
 
@@ -905,7 +921,7 @@ static void fileSelectListDir(FileSelectWidget	fw) {
 
 	fw->fileSelect.fileNames[nfiles] = NULL;
 
-	XawListChange(fw->fileSelect.fileList, (const char **)fw->fileSelect.fileNames, nfiles, 0, True);
+	XawListChange(fw->fileSelect.fileList, (String *)fw->fileSelect.fileNames, nfiles, 0, True);
 
 	if (XtIsRealized(fw->fileSelect.fileScroll))
 		XawViewportSetCoordinates(fw->fileSelect.fileScroll, 0, 0);

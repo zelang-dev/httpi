@@ -114,9 +114,9 @@ typedef struct ButtonW {
 #include <Linux/Xaw95/SmeBSB.h>
 #include <Linux/Xaw95/SmeLine.h>
 
-#include "Linux/TextField.h"
-#include "Linux/FileSelect.h"
-#include "Linux/Gridbox.h"
+#include <Linux/TextField.h>
+#include <Linux/FileSelect.h>
+#include <Linux/Gridbox.h>
 #endif
 
 #include <stdint.h>
@@ -358,7 +358,7 @@ typedef void *ui_menu_t;
 /* Platform TextField type */
 typedef Widget ui_form_t;
 /* Platform string type */
-typedef char *ui_str_t;
+typedef String ui_str_t;
 /* Platform bool type */
 typedef bool ui_bool;
 #define ui_field_str(value, field)		ui_str_t value = TextFieldGetString(field)
