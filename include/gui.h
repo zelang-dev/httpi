@@ -97,21 +97,22 @@ typedef struct ButtonW {
 #include <X11/StringDefs.h>
 #include <X11/Xatom.h>
 #include <X11/Xmu/Xmu.h>
-#include <X11/Xaw/Box.h>
-#include <X11/Xaw/Paned.h>
-#include <X11/Xaw/Dialog.h>
-#include <X11/Xaw/Command.h>
-#include <X11/Xaw/Form.h>
-#include <X11/Xaw/AsciiText.h>
+#include <X11/Xmu/Converters.h>
+#include <Linux/Xaw95/Box.h>
+#include <Linux/Xaw95/Paned.h>
+#include <Linux/Xaw95/Dialog.h>
+#include <Linux/Xaw95/Command.h>
+#include <Linux/Xaw95/Form.h>
+#include <Linux/Xaw95/AsciiText.h>
 
-#include <X11/Xaw/MenuButton.h>
-#include <X11/Xaw/Label.h>
-#include <X11/Xaw/Viewport.h>
-#include <X11/Xaw/List.h>
-#include <X11/Xaw/Scrollbar.h>
-#include <X11/Xaw/SimpleMenu.h>
-#include <X11/Xaw/SmeBSB.h>
-#include <X11/Xaw/SmeLine.h>
+#include <Linux/Xaw95/MenuButton.h>
+#include <Linux/Xaw95/Label.h>
+#include <Linux/Xaw95/Viewport.h>
+#include <Linux/Xaw95/List.h>
+#include <Linux/Xaw95/Scrollbar.h>
+#include <Linux/Xaw95/SimpleMenu.h>
+#include <Linux/Xaw95/SmeBSB.h>
+#include <Linux/Xaw95/SmeLine.h>
 
 #include "Linux/TextField.h"
 #include "Linux/FileSelect.h"

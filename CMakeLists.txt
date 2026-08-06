@@ -108,15 +108,13 @@ else()
 		target_link_libraries(gui gdi32 comctl32 )
 	else()
 		find_package(X11 REQUIRED COMPONENTS Xmu Xt)
-		find_library(X11_Xaw_LIB Xaw)
 		find_package(OpenGL REQUIRED COMPONENTS GLX)
+		file(GLOB gui_files
+			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/*.c
+			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/Xaw95/*.c)
 		add_library(gui
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/re.c
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/TextField.c
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/FileSelect.c
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/Gridbox.c)
-		target_link_libraries(gui Xaw X11::Xmu X11::Xt X11::X11 OpenGL::GL OpenGL::GLU)
+			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c ${gui_files})
+		target_link_libraries(gui X11::Xmu X11::Xt X11::X11 OpenGL::GL OpenGL::GLU)
 	endif()
 endif()
 target_include_directories(gui PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
