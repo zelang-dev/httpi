@@ -95,29 +95,17 @@ target_include_directories(${SUB_PROJECT}
 
 target_link_libraries(${SUB_PROJECT} PUBLIC EVENTS::LOOP)
 
-if(APPLE)
-	add_library(gui ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c)
-	find_library(COCOA_LIBRARY Cocoa required)
-	target_link_libraries(gui ${COCOA_LIBRARY})
-else()
-	if(WIN32)
-		add_library(gui
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/re.c
-		)
-		target_link_libraries(gui gdi32 comctl32 )
-	else()
-		find_package(X11 REQUIRED COMPONENTS Xmu Xt)
-		find_package(OpenGL REQUIRED COMPONENTS GLX)
-		file(GLOB gui_files
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/*.c
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/Linux/Xaw95/*.c)
-		add_library(gui
-			${CMAKE_CURRENT_SOURCE_DIR}/src/lib/gui/gui.c ${gui_files})
-		target_link_libraries(gui X11::Xmu X11::Xt X11::X11 OpenGL::GL OpenGL::GLU)
-	endif()
+find_package(gui QUIET CONFIG)
+if(NOT gui_FOUND)
+    FetchContent_Declare(gui
+        URL https://github.com/zelang-dev/c-gui/archive/refs/heads/main.zip
+        URL_MD5 6e9756dee0ef5903d850dc021d5df725
+    )
+    FetchContent_MakeAvailable(gui)
 endif()
-target_include_directories(gui PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+target_include_directories(${SUB_PROJECT}
+	PRIVATE $<BUILD_INTERFACE:${GUI_INCLUDE_DIR} $<INSTALL_INTERFACE:${GUI_INCLUDE_DIR})
+target_link_libraries(${SUB_PROJECT} PUBLIC GUI::MINI)
 
 find_package(ZLIB CONFIG)
 if(ZLIB_FOUND)
